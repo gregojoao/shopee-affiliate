@@ -1,6 +1,8 @@
 # Shopee.Affiliate
 
-A small .NET 10 client for the Shopee Affiliate Open API.
+A small .NET client for the Shopee Affiliate Open API.
+
+The NuGet package targets .NET 8 and .NET 10.
 
 It focuses on the workflow most affiliate bots need:
 
@@ -175,16 +177,15 @@ dotnet pack -c Release
 
 Before publishing to NuGet:
 
-1. Update `RepositoryUrl` in `src/Shopee.Affiliate/Shopee.Affiliate.csproj`.
-2. Update the package version.
-3. Create a release package:
+1. Update the package version in `src/Shopee.Affiliate/Shopee.Affiliate.csproj`.
+2. Create a release package:
 
 ```bash
 dotnet test
 dotnet pack -c Release
 ```
 
-4. Push to NuGet:
+3. Push to NuGet:
 
 ```bash
 dotnet nuget push src/Shopee.Affiliate/bin/Release/Shopee.Affiliate.*.nupkg --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json

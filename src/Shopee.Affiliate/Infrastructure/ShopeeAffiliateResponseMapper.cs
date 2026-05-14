@@ -1,7 +1,8 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Shopee.Affiliate.Domain;
 
-namespace Shopee.Affiliate;
+namespace Shopee.Affiliate.Infrastructure;
 
 internal static class ShopeeAffiliateResponseMapper
 {

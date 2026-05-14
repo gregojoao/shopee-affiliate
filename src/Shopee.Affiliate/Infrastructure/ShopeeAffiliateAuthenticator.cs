@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 
-namespace Shopee.Affiliate;
+namespace Shopee.Affiliate.Infrastructure;
 
 internal static class ShopeeAffiliateAuthenticator
 {

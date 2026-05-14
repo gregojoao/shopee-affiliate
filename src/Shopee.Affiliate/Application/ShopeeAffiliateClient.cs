@@ -1,5 +1,7 @@
 using System.Text;
 using System.Text.Json;
+using Shopee.Affiliate.Domain;
+using Shopee.Affiliate.Infrastructure;
 
 namespace Shopee.Affiliate;
 

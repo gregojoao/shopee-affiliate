@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace Shopee.Affiliate;
+namespace Shopee.Affiliate.Domain;
 
 internal static class ShopeeAffiliateUrlParser
 {

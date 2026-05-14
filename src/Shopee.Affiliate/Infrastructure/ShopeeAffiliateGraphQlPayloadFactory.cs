@@ -1,7 +1,8 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using Shopee.Affiliate.Domain;
 
-namespace Shopee.Affiliate;
+namespace Shopee.Affiliate.Infrastructure;
 
 internal static class ShopeeAffiliateGraphQlPayloadFactory
 {

@@ -1,0 +1,33 @@
+name: Publish NuGet
+
+on:
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - run: dotnet restore
+
+      - run: dotnet test --configuration Release --no-restore
+
+      - run: dotnet pack --configuration Release --no-restore --output artifacts
+
+      - name: Check NuGet API key
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace("${{ secrets.NUGET_API_KEY }}")) {
+            throw "Repository secret NUGET_API_KEY is required."
+          }
+
+      - name: Publish package to NuGet
+        run: dotnet nuget push "artifacts\*.nupkg" --api-key "${{ secrets.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate

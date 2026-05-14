@@ -16,6 +16,20 @@ Current version:
 
 ## NuGet
 
+### GitHub Actions
+
+Recommended for releases:
+
+1. Create a NuGet API key at https://www.nuget.org/account/apikeys with the `Push` scope.
+2. In GitHub, open `Settings` -> `Secrets and variables` -> `Actions`.
+3. Create a repository secret named `NUGET_API_KEY`.
+4. Open `Actions` -> `Publish NuGet`.
+5. Click `Run workflow` on the `main` branch.
+
+The workflow runs tests, creates the package, and publishes the `.nupkg` to NuGet. The API key stays stored as a GitHub secret.
+
+### Local publish
+
 1. Run the full validation:
 
 ```bash

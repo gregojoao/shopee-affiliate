@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Shopee.Affiliate/Shopee.Affiliate.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Shopee.Affiliate.Tests/Shopee.Affiliate.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -340,4 +340,4 @@ See [PUBLISHING.md](PUBLISHING.md) for the full release checklist.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.

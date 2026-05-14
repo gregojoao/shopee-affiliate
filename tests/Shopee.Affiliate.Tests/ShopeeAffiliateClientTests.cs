@@ -2,6 +2,9 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace Shopee.Affiliate.Tests;
 
@@ -246,6 +249,60 @@ public sealed class ShopeeAffiliateClientTests
     {
         ShopeeAffiliateClient.ReadSubIdsFromEnvironment(" telegram, ,bot,one,two,three,four ")
             .Should().Equal("telegram", "bot", "one", "two", "three");
+    }
+
+    [Fact]
+    public void AddShopeeAffiliate_ConfiguresOptionsWithDelegate()
+    {
+        var services = new ServiceCollection();
+
+        services.AddShopeeAffiliate(options =>
+        {
+            options.Endpoint = "https://example.test/graphql";
+            options.AppId = "123";
+            options.Secret = "secret";
+            options.SubIds = new[] { "telegram", "bot" };
+        });
+
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<IOptions<ShopeeAffiliateOptions>>().Value;
+
+        provider.GetRequiredService<ShopeeAffiliateClient>().Should().NotBeNull();
+        provider.GetRequiredService<IShopeeAffiliateService>().Should().BeOfType<ShopeeAffiliateService>();
+        options.Endpoint.Should().Be("https://example.test/graphql");
+        options.AppId.Should().Be("123");
+        options.Secret.Should().Be("secret");
+        options.SubIds.Should().Equal("telegram", "bot");
+    }
+
+    [Fact]
+    public void AddShopeeAffiliate_BindsOptionsFromConfigurationSection()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Shopee:Affiliate:Endpoint"] = "https://example.test/graphql",
+                ["Shopee:Affiliate:AppId"] = "123",
+                ["Shopee:Affiliate:Secret"] = "secret",
+                ["Shopee:Affiliate:SubIds:0"] = "telegram",
+                ["Shopee:Affiliate:SubIds:1"] = "bot",
+                ["Shopee:Affiliate:ResolveShortUrls"] = "false",
+                ["Shopee:Affiliate:PriceCultureName"] = "en-US"
+            })
+            .Build();
+        var services = new ServiceCollection();
+
+        services.AddShopeeAffiliate(configuration);
+
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<IOptions<ShopeeAffiliateOptions>>().Value;
+
+        options.Endpoint.Should().Be("https://example.test/graphql");
+        options.AppId.Should().Be("123");
+        options.Secret.Should().Be("secret");
+        options.SubIds.Should().Equal("telegram", "bot");
+        options.ResolveShortUrls.Should().BeFalse();
+        options.PriceCultureName.Should().Be("en-US");
     }
 
     private static ShopeeAffiliateOptions CreateOptions(bool resolveShortUrls = true)

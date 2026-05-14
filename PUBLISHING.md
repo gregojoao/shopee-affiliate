@@ -11,7 +11,7 @@ Shopee.Affiliate
 Current version:
 
 ```text
-0.1.0
+0.2.0
 ```
 
 ## NuGet
@@ -37,8 +37,8 @@ src/Shopee.Affiliate/bin/Release/
 Expected files:
 
 ```text
-Shopee.Affiliate.0.1.0.nupkg
-Shopee.Affiliate.0.1.0.snupkg
+Shopee.Affiliate.0.2.0.nupkg
+Shopee.Affiliate.0.2.0.snupkg
 ```
 
 3. Create a NuGet API key at https://www.nuget.org/account/apikeys with the `Push` scope.
@@ -49,14 +49,14 @@ PowerShell:
 
 ```powershell
 $env:NUGET_API_KEY = "your-api-key"
-dotnet nuget push .\src\Shopee.Affiliate\bin\Release\Shopee.Affiliate.0.1.0.nupkg --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json
+dotnet nuget push .\src\Shopee.Affiliate\bin\Release\Shopee.Affiliate.0.2.0.nupkg --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json
 ```
 
 Bash:
 
 ```bash
 export NUGET_API_KEY="your-api-key"
-dotnet nuget push ./src/Shopee.Affiliate/bin/Release/Shopee.Affiliate.0.1.0.nupkg --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json
+dotnet nuget push ./src/Shopee.Affiliate/bin/Release/Shopee.Affiliate.0.2.0.nupkg --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json
 ```
 
 Do not commit or share the API key. If the key leaks, revoke it in nuget.org and create a new one.

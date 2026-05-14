@@ -74,6 +74,8 @@ Console.WriteLine(result.ProductImageUrl);
 
 ## Configuration
 
+You can pass credentials manually:
+
 ```csharp
 var options = new ShopeeAffiliateOptions
 {
@@ -86,6 +88,52 @@ var options = new ShopeeAffiliateOptions
     FallbackToShortLink = true,
     PriceCultureName = "pt-BR"
 };
+```
+
+For ASP.NET Core, Worker Services, or any app using `Microsoft.Extensions.DependencyInjection`, register the SDK once:
+
+```csharp
+builder.Services.AddShopeeAffiliate(builder.Configuration);
+```
+
+Then configure secrets through environment variables, user secrets, Key Vault, or any other configuration provider:
+
+```json
+{
+  "Shopee": {
+    "Affiliate": {
+      "AppId": "your-app-id",
+      "Secret": "your-secret",
+      "SubIds": [ "campaign", "channel" ]
+    }
+  }
+}
+```
+
+In production, prefer environment variables or a secret manager instead of committing secrets to `appsettings.json`.
+
+After registration, inject the service:
+
+```csharp
+public sealed class DealPublisher(IShopeeAffiliateService shopee)
+{
+    public async Task PublishAsync(string productUrl)
+    {
+        var result = await shopee.GenerateAffiliateLinkAsync(productUrl);
+        Console.WriteLine(result.AffiliateUrl);
+    }
+}
+```
+
+You can also configure options directly in code:
+
+```csharp
+builder.Services.AddShopeeAffiliate(options =>
+{
+    options.AppId = builder.Configuration["SHOPEE_AFFILIATE_APP_ID"]!;
+    options.Secret = builder.Configuration["SHOPEE_AFFILIATE_SECRET"]!;
+    options.SubIds = new[] { "telegram", "bot" };
+});
 ```
 
 | Option | Default | Purpose |
@@ -101,6 +149,8 @@ var options = new ShopeeAffiliateOptions
 | `PriceCultureName` | `pt-BR` | Culture used to format currency strings. |
 
 ## Main APIs
+
+Use `IShopeeAffiliateService` when credentials are registered through DI. Use `ShopeeAffiliateClient` directly when you want to pass `ShopeeAffiliateOptions` per call.
 
 ### `GenerateAffiliateLinkAsync`
 

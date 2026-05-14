@@ -1,23 +1,32 @@
 ## Resumo
 
-- 
+<!-- Uma frase descrevendo o objetivo desta mudança. -->
+
+-
 
 ## Principais mudanças
 
-- 
+<!-- Liste os arquivos / contratos / comportamentos mais relevantes que mudaram. -->
+
+-
 
 ## Tipo de mudança
 
 - [ ] Correção de bug
 - [ ] Nova funcionalidade
-- [ ] Mudança com quebra de compatibilidade
-- [ ] Refatoração
+- [ ] Mudança com quebra de compatibilidade (breaking change)
+- [ ] Refatoração sem alteração de comportamento
 - [ ] Documentação
 
-## Validação
+## Checklist
 
-- [ ] `dotnet test`
+- [ ] `dotnet build` sem erros
+- [ ] `dotnet test` passando
+- [ ] CHANGELOG / README atualizado (se aplicável)
+- [ ] Breaking changes documentadas neste PR
 
-## Observações
+## Contexto adicional
 
-- 
+<!-- Decisões de design não óbvias, trade-offs, links para issues/discussões. -->
+
+-

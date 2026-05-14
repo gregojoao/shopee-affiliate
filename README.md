@@ -4,6 +4,8 @@ A small .NET client for the Shopee Affiliate Open API.
 
 The NuGet package targets .NET 8 and .NET 10.
 
+Maintained by Greco Labs.
+
 It focuses on the workflow most affiliate bots need:
 
 - Convert Shopee URLs into affiliate short links.

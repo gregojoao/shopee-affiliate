@@ -6,9 +6,9 @@
     <Nullable>enable</Nullable>
     <PackageId>Shopee.Affiliate</PackageId>
     <Version>0.1.0</Version>
-    <Authors>Joao Greco</Authors>
-    <Company>Joao Greco</Company>
-    <Copyright>Copyright (c) 2026 Joao Greco</Copyright>
+    <Authors>Greco Labs</Authors>
+    <Company>Greco Labs</Company>
+    <Copyright>Copyright (c) 2026 Greco Labs</Copyright>
     <Description>Minimal .NET client for Shopee Affiliate Open API link generation and product offer lookup.</Description>
     <PackageProjectUrl>https://github.com/gregojoao/shopee-affiliate</PackageProjectUrl>
     <PackageTags>shopee;affiliate;graphql;links;ecommerce;nuget</PackageTags>

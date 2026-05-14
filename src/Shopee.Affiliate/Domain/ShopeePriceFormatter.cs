@@ -8,7 +8,7 @@ internal static class ShopeePriceFormatter
     public static string FormatShopeePriceRange(
         string? priceMin,
         string? priceMax,
-        string priceCultureName = "pt-BR")
+        CultureInfo priceCulture)
     {
         var min = ParseShopeePrice(priceMin);
         var max = ParseShopeePrice(priceMax);
@@ -18,20 +18,20 @@ internal static class ShopeePriceFormatter
             return string.Empty;
         }
 
-        var formattedMin = FormatCurrency(min.Value, priceCultureName);
+        var formattedMin = FormatCurrency(min.Value, priceCulture);
         if (max is null || Math.Abs(max.Value - min.Value) < 0.005m)
         {
             return formattedMin;
         }
 
-        return $"{formattedMin} - {FormatCurrency(max.Value, priceCultureName)}";
+        return $"{formattedMin} - {FormatCurrency(max.Value, priceCulture)}";
     }
 
     public static string ComputeShopeeOriginalPrice(
         string? priceMin,
         string? priceMax,
         string? priceDiscountRate,
-        string priceCultureName = "pt-BR")
+        CultureInfo priceCulture)
     {
         _ = priceMax;
 
@@ -49,7 +49,7 @@ internal static class ShopeePriceFormatter
         }
 
         var factor = (100 - rate) / 100;
-        return FormatCurrency(min.Value / factor, priceCultureName);
+        return FormatCurrency(min.Value / factor, priceCulture);
     }
 
     private static decimal? ParseShopeePrice(string? value)
@@ -78,10 +78,8 @@ internal static class ShopeePriceFormatter
             : null;
     }
 
-    private static string FormatCurrency(decimal value, string cultureName)
+    private static string FormatCurrency(decimal value, CultureInfo culture)
     {
-        var culture = CultureInfo.GetCultureInfo(
-            string.IsNullOrWhiteSpace(cultureName) ? "pt-BR" : cultureName);
-        return value.ToString("C", culture);
+        return value.ToString("C", culture ?? CultureInfo.GetCultureInfo("pt-BR"));
     }
 }

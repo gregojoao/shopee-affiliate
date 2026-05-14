@@ -1,4 +1,4 @@
-namespace Shopee.Affiliate;
+namespace Shopee.Affiliate.Domain;
 
 public sealed record ShopeeAffiliateProductIdentity(
     string? ShopId,

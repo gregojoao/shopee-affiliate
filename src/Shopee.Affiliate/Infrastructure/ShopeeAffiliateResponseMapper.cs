@@ -1,12 +1,13 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Globalization;
 using Shopee.Affiliate.Domain;
 
 namespace Shopee.Affiliate.Infrastructure;
 
-internal static class ShopeeAffiliateResponseMapper
+internal static partial class ShopeeAffiliateResponseMapper
 {
-    public static string ExtractShortLink(JsonElement responseBody)
+    public static Uri ExtractShortLink(JsonElement responseBody)
     {
         ThrowGraphQLErrors(responseBody);
 
@@ -16,17 +17,17 @@ internal static class ShopeeAffiliateResponseMapper
             ? GetStringValue(shortLinkElement)
             : string.Empty;
 
-        if (!ShopeeAffiliateUrlParser.IsValidHttpUrl(shortLink))
+        if (!TryCreateHttpUri(shortLink, out var shortLinkUri))
         {
             throw new ShopeeAffiliateApiException("Shopee API did not return a valid shortLink.");
         }
 
-        return shortLink;
+        return shortLinkUri;
     }
 
     public static ShopeeProductOffer? ExtractProductOffer(
         JsonElement responseBody,
-        string priceCultureName = "pt-BR")
+        CultureInfo priceCulture)
     {
         ThrowGraphQLErrors(responseBody);
 
@@ -48,6 +49,9 @@ internal static class ShopeeAffiliateResponseMapper
         var imageUrl = GetPropertyString(node, "imageUrl");
         var productUrl = GetPropertyString(node, "productLink");
         var itemId = GetPropertyString(node, "itemId");
+        var validAffiliateUrl = GetValidHttpUriOrNull(affiliateUrl);
+        var validImageUrl = GetValidHttpUriOrNull(imageUrl);
+        var validProductUrl = GetValidHttpUriOrNull(productUrl);
 
         string? shopId = null;
         if (ShopeeAffiliateUrlParser.TryExtractProductIdentity(productUrl, out var identity))
@@ -56,13 +60,13 @@ internal static class ShopeeAffiliateResponseMapper
         }
 
         return new ShopeeProductOffer(
-            AffiliateUrl: ShopeeAffiliateUrlParser.IsValidHttpUrl(affiliateUrl) ? affiliateUrl : string.Empty,
+            AffiliateUrl: validAffiliateUrl,
             ProductTitle: productTitle,
-            ProductPrice: ShopeePriceFormatter.FormatShopeePriceRange(priceMin, priceMax, priceCultureName),
-            ProductOriginalPrice: ShopeePriceFormatter.ComputeShopeeOriginalPrice(priceMin, priceMax, priceDiscountRate, priceCultureName),
-            ProductImageUrl: ShopeeAffiliateUrlParser.IsValidHttpUrl(imageUrl) ? imageUrl : string.Empty,
-            ProductUrl: ShopeeAffiliateUrlParser.IsValidHttpUrl(productUrl) ? productUrl : string.Empty,
-            ImageUrl: ShopeeAffiliateUrlParser.IsValidHttpUrl(imageUrl) ? imageUrl : string.Empty,
+            ProductPrice: ShopeePriceFormatter.FormatShopeePriceRange(priceMin, priceMax, priceCulture),
+            ProductOriginalPrice: ShopeePriceFormatter.ComputeShopeeOriginalPrice(priceMin, priceMax, priceDiscountRate, priceCulture),
+            ProductImageUrl: validImageUrl,
+            ProductUrl: validProductUrl,
+            ImageUrl: validImageUrl,
             ItemId: itemId,
             ShopId: shopId,
             PriceMin: priceMin,
@@ -119,6 +123,18 @@ internal static class ShopeeAffiliateResponseMapper
         };
     }
 
+    private static Uri? GetValidHttpUriOrNull(string value)
+        => TryCreateHttpUri(value, out var uri) ? uri : null;
+
+    private static bool TryCreateHttpUri(string? value, out Uri uri)
+    {
+        return Uri.TryCreate(value, UriKind.Absolute, out uri!) &&
+               (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
+    }
+
     private static string NormalizeWhitespace(string value)
-        => Regex.Replace(value ?? string.Empty, @"\s+", " ").Trim();
+        => WhitespaceRegex().Replace(value ?? string.Empty, " ").Trim();
+
+    [GeneratedRegex(@"\s+")]
+    private static partial Regex WhitespaceRegex();
 }

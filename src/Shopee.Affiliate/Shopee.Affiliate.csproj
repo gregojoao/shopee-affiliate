@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PackageId>Shopee.Affiliate</PackageId>
-    <Version>0.3.0</Version>
+    <Version>1.0.0</Version>
     <Authors>Greco Labs</Authors>
     <Company>Greco Labs</Company>
     <Copyright>Copyright (c) 2026 Greco Labs</Copyright>
@@ -16,7 +16,7 @@
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
     <RepositoryType>git</RepositoryType>
     <RepositoryUrl>https://github.com/gregojoao/shopee-affiliate</RepositoryUrl>
-    <PackageReleaseNotes>Refactor internals into domain, application, and infrastructure layers while preserving the public SDK API.</PackageReleaseNotes>
+    <PackageReleaseNotes>Release 1.0.0 with stable SDK contracts based on request objects, typed Uri results, link strategies, and application/domain/infrastructure namespaces.</PackageReleaseNotes>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>

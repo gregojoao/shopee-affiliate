@@ -1,4 +1,4 @@
-namespace Shopee.Affiliate;
+namespace Shopee.Affiliate.Infrastructure;
 
 public sealed class ShopeeAffiliateApiException : Exception
 {

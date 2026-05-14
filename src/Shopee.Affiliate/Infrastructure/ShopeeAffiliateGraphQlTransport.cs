@@ -1,6 +1,6 @@
+using Shopee.Affiliate.Application;
 using System.Text;
 using System.Text.Json;
-using Shopee.Affiliate.Application;
 
 namespace Shopee.Affiliate.Infrastructure;
 

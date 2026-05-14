@@ -1,7 +1,7 @@
+using Shopee.Affiliate.Domain;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using System.Globalization;
-using Shopee.Affiliate.Domain;
 
 namespace Shopee.Affiliate.Infrastructure;
 

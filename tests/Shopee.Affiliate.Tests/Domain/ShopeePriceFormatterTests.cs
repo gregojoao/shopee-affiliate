@@ -1,6 +1,6 @@
-using System.Globalization;
 using FluentAssertions;
 using Shopee.Affiliate.Domain;
+using System.Globalization;
 
 namespace Shopee.Affiliate.Tests.Domain;
 

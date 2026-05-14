@@ -1,12 +1,12 @@
-using System.Globalization;
-using System.Net;
-using System.Text;
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Shopee.Affiliate.Application;
 using Shopee.Affiliate.Infrastructure;
+using System.Globalization;
+using System.Net;
+using System.Text;
 
 namespace Shopee.Affiliate.Tests;
 

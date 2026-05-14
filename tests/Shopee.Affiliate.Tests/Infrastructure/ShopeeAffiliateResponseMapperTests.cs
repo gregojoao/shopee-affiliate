@@ -1,7 +1,7 @@
-using System.Globalization;
-using System.Text.Json;
 using FluentAssertions;
 using Shopee.Affiliate.Infrastructure;
+using System.Globalization;
+using System.Text.Json;
 
 namespace Shopee.Affiliate.Tests.Infrastructure;
 

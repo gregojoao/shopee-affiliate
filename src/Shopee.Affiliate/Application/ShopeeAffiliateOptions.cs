@@ -1,11 +1,13 @@
-namespace Shopee.Affiliate;
+using System.Globalization;
+
+namespace Shopee.Affiliate.Application;
 
 public sealed class ShopeeAffiliateOptions
 {
-    public const string DefaultEndpoint = "https://open-api.affiliate.shopee.com.br/graphql";
-    public const int DefaultTimeoutMilliseconds = 90_000;
+    public static readonly Uri DefaultEndpoint = new("https://open-api.affiliate.shopee.com.br/graphql");
+    public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(90);
 
-    public string Endpoint { get; set; } = DefaultEndpoint;
+    public Uri Endpoint { get; set; } = DefaultEndpoint;
 
     public string AppId { get; set; } = string.Empty;
 
@@ -13,15 +15,9 @@ public sealed class ShopeeAffiliateOptions
 
     public IReadOnlyList<string> SubIds { get; set; } = Array.Empty<string>();
 
-    public int TimeoutMilliseconds { get; set; } = DefaultTimeoutMilliseconds;
+    public TimeSpan Timeout { get; set; } = DefaultTimeout;
 
-    public bool ResolveShortUrls { get; set; } = true;
-
-    public bool PreferProductOffer { get; set; } = true;
-
-    public bool FallbackToShortLink { get; set; } = true;
-
-    public string PriceCultureName { get; set; } = "pt-BR";
+    public CultureInfo PriceCulture { get; set; } = CultureInfo.GetCultureInfo("pt-BR");
 
     public void Validate()
     {
@@ -35,10 +31,20 @@ public sealed class ShopeeAffiliateOptions
             throw new InvalidOperationException("Shopee affiliate Secret is required.");
         }
 
-        if (!Uri.TryCreate(Endpoint, UriKind.Absolute, out var endpointUri) ||
-            (endpointUri.Scheme != Uri.UriSchemeHttp && endpointUri.Scheme != Uri.UriSchemeHttps))
+        if (Endpoint is null ||
+            (Endpoint.Scheme != Uri.UriSchemeHttp && Endpoint.Scheme != Uri.UriSchemeHttps))
         {
             throw new InvalidOperationException("Shopee affiliate Endpoint must be an absolute HTTP/HTTPS URL.");
+        }
+
+        if (Timeout <= TimeSpan.Zero)
+        {
+            throw new InvalidOperationException("Shopee affiliate Timeout must be greater than zero.");
+        }
+
+        if (PriceCulture is null)
+        {
+            throw new InvalidOperationException("Shopee affiliate PriceCulture is required.");
         }
     }
 }

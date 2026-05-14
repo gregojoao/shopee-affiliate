@@ -1,161 +1,17 @@
+using System.Globalization;
 using System.Net;
 using System.Text;
-using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Shopee.Affiliate.Application;
+using Shopee.Affiliate.Infrastructure;
 
 namespace Shopee.Affiliate.Tests;
 
 public sealed class ShopeeAffiliateClientTests
 {
-    [Fact]
-    public void BuildGenerateShortLinkPayload_EscapesUrlAndSubIds()
-    {
-        var payload = ShopeeAffiliateClient.BuildGenerateShortLinkPayload(
-            "https://s.shopee.com.br/50VRdFsnBr?name=\"chair\"",
-            new[] { "telegram", "bot" });
-
-        payload.Should().Be(
-            "{\"query\":\"mutation { generateShortLink(input: { originUrl: \\\"https://s.shopee.com.br/50VRdFsnBr?name=\\\\\\\"chair\\\\\\\"\\\", subIds: [\\\"telegram\\\", \\\"bot\\\"] }) { shortLink } }\"}");
-    }
-
-    [Fact]
-    public void BuildGenerateShortLinkPayload_OmitsEmptySubIds()
-    {
-        var payload = ShopeeAffiliateClient.BuildGenerateShortLinkPayload("https://s.shopee.com.br/50VRdFsnBr");
-
-        payload.Should().Be(
-            "{\"query\":\"mutation { generateShortLink(input: { originUrl: \\\"https://s.shopee.com.br/50VRdFsnBr\\\" }) { shortLink } }\"}");
-    }
-
-    [Fact]
-    public void BuildProductOfferPayload_RequestsProductMetadataAndOfferLink()
-    {
-        var payload = ShopeeAffiliateClient.BuildProductOfferPayload(
-            new ShopeeAffiliateProductIdentity("627750190", "23798776965"));
-
-        payload.Should().Be(
-            "{\"query\":\"{ productOfferV2(shopId: 627750190, itemId: 23798776965, limit: 1) { nodes { itemId productName productLink offerLink imageUrl priceMin priceMax priceDiscountRate } pageInfo { page limit hasNextPage } } }\"}");
-    }
-
-    [Fact]
-    public void CreateSignature_UsesSha256OverAppIdTimestampPayloadAndSecret()
-    {
-        var payload = "{\"query\":\"mutation { generateShortLink(input: { originUrl: \\\"https://s.shopee.com.br/50VRdFsnBr\\\" }) { shortLink } }\"}";
-
-        ShopeeAffiliateClient.CreateSignature("123", 1704067200, payload, "secret")
-            .Should().Be("eec3e1f8269df06e7090121d358cfcdc5814efaff9773102031b887657998e01");
-    }
-
-    [Fact]
-    public void BuildAuthorizationHeader_FormatsShopeeSha256Header()
-    {
-        var header = ShopeeAffiliateClient.BuildAuthorizationHeader("123", 1704067200, "{}", "secret");
-
-        header.Should().MatchRegex("^SHA256 Credential=123, Timestamp=1704067200, Signature=[a-f0-9]{64}$");
-    }
-
-    [Fact]
-    public void ExtractShortLink_ReadsGraphQlShortLink()
-    {
-        using var document = JsonDocument.Parse("""
-        {
-          "data": {
-            "generateShortLink": {
-              "shortLink": "https://s.shopee.com.br/api-link"
-            }
-          }
-        }
-        """);
-
-        ShopeeAffiliateClient.ExtractShortLink(document.RootElement)
-            .Should().Be("https://s.shopee.com.br/api-link");
-    }
-
-    [Fact]
-    public void ExtractProductOffer_ReadsAffiliateLinkTitleAndPrice()
-    {
-        using var document = JsonDocument.Parse("""
-        {
-          "data": {
-            "productOfferV2": {
-              "nodes": [
-                {
-                  "itemId": 23798776965,
-                  "productName": " Cadeira de Escritorio Zinnia   Venecia SL ",
-                  "productLink": "https://shopee.com.br/product/627750190/23798776965",
-                  "offerLink": "https://s.shopee.com.br/offer-link",
-                  "imageUrl": "https://cf.shopee.com.br/file/image",
-                  "priceMin": "334.99",
-                  "priceMax": "334.99",
-                  "priceDiscountRate": 20
-                }
-              ]
-            }
-          }
-        }
-        """);
-
-        var productOffer = ShopeeAffiliateClient.ExtractProductOffer(document.RootElement);
-
-        productOffer.Should().BeEquivalentTo(new ShopeeProductOffer(
-            AffiliateUrl: "https://s.shopee.com.br/offer-link",
-            ProductTitle: "Cadeira de Escritorio Zinnia Venecia SL",
-            ProductPrice: "R$ 334,99",
-            ProductOriginalPrice: "R$ 418,74",
-            ProductImageUrl: "https://cf.shopee.com.br/file/image",
-            ProductUrl: "https://shopee.com.br/product/627750190/23798776965",
-            ImageUrl: "https://cf.shopee.com.br/file/image",
-            ItemId: "23798776965",
-            ShopId: "627750190",
-            PriceMin: "334.99",
-            PriceMax: "334.99",
-            PriceDiscountRate: "20"));
-    }
-
-    [Fact]
-    public void ExtractShortLink_ThrowsGraphQlErrors()
-    {
-        using var document = JsonDocument.Parse("""
-        {
-          "errors": [
-            { "message": "Invalid Signature" }
-          ]
-        }
-        """);
-
-        var act = () => ShopeeAffiliateClient.ExtractShortLink(document.RootElement);
-
-        act.Should().Throw<ShopeeAffiliateApiException>()
-            .WithMessage("*Invalid Signature*");
-    }
-
-    [Theory]
-    [InlineData("https://shopee.com.br/Cadeira-i.627750190.23798776965?utm_source=test", "627750190", "23798776965")]
-    [InlineData("https://shopee.com.br/product/627750190/23798776965", "627750190", "23798776965")]
-    [InlineData("https://shopee.com.br/opaanlp/347988064/9212570285?uls_trackid=test", "347988064", "9212570285")]
-    public void TryExtractProductIdentity_ReadsProductIdsFromUrls(
-        string url,
-        string expectedShopId,
-        string expectedItemId)
-    {
-        var success = ShopeeAffiliateClient.TryExtractProductIdentity(url, out var identity);
-
-        success.Should().BeTrue();
-        identity.ShopId.Should().Be(expectedShopId);
-        identity.ItemId.Should().Be(expectedItemId);
-    }
-
-    [Fact]
-    public void FormatShopeePriceRange_FormatsSinglePricesAndRanges()
-    {
-        ShopeeAffiliateClient.FormatShopeePriceRange("334.99", "334.99").Should().Be("R$ 334,99");
-        ShopeeAffiliateClient.FormatShopeePriceRange("1000", "1299.9").Should().Be("R$ 1.000,00 - R$ 1.299,90");
-        ShopeeAffiliateClient.FormatShopeePriceRange("", "").Should().BeEmpty();
-    }
-
     [Fact]
     public async Task GenerateShortLinkAsync_SignsAndPostsPayload()
     {
@@ -176,21 +32,43 @@ public sealed class ShopeeAffiliateClientTests
                 """)
             };
         }));
-        var client = new ShopeeAffiliateClient(httpClient, () => 1704067200);
+        var client = new ShopeeAffiliateClient(httpClient, CreateOptions(), () => 1704067200);
 
-        using var result = await client.GenerateShortLinkAsync(
-            "https://s.shopee.com.br/50VRdFsnBr",
-            CreateOptions());
+        var result = await client.GenerateShortLinkAsync(new ShopeeShortLinkRequest
+        {
+            OriginUrl = new Uri("https://s.shopee.com.br/50VRdFsnBr")
+        });
 
-        result.ShortLink.Should().Be("https://s.shopee.com.br/api-link");
+        result.ShortLink.Should().Be(new Uri("https://s.shopee.com.br/api-link"));
+        result.RawResponse.Should().Contain("generateShortLink");
         capturedRequest.Should().NotBeNull();
         capturedRequest!.Method.Should().Be(HttpMethod.Post);
         capturedRequest.Url.Should().Be("https://example.test/graphql");
         capturedRequest.ContentType.Should().Be("application/json; charset=utf-8");
         capturedRequest.Authorization.Should().MatchRegex("^SHA256 Credential=123, Timestamp=1704067200, Signature=[a-f0-9]{64}$");
-        capturedRequest.Body.Should().Be(ShopeeAffiliateClient.BuildGenerateShortLinkPayload(
-            "https://s.shopee.com.br/50VRdFsnBr",
-            new[] { "telegram" }));
+        capturedRequest.Body.Should().Be(
+            "{\"query\":\"mutation { generateShortLink(input: { originUrl: \\\"https://s.shopee.com.br/50VRdFsnBr\\\", subIds: [\\\"telegram\\\"] }) { shortLink } }\"}");
+    }
+
+    [Fact]
+    public async Task GenerateShortLinkAsync_UsesRequestSubIdsWhenProvided()
+    {
+        CapturedRequest? capturedRequest = null;
+        using var httpClient = new HttpClient(new DelegateHandler(request =>
+        {
+            capturedRequest = CapturedRequest.From(request);
+            return ShortLinkResponse("https://s.shopee.com.br/request-subid");
+        }));
+        var client = new ShopeeAffiliateClient(httpClient, CreateOptions(), () => 1704067200);
+
+        await client.GenerateShortLinkAsync(new ShopeeShortLinkRequest
+        {
+            OriginUrl = new Uri("https://s.shopee.com.br/50VRdFsnBr"),
+            SubIds = new[] { "campaign", "channel" }
+        });
+
+        capturedRequest!.Body.Should().Contain("subIds: [\\\"campaign\\\", \\\"channel\\\"]");
+        capturedRequest.Body.Should().NotContain("telegram");
     }
 
     [Fact]
@@ -200,65 +78,168 @@ public sealed class ShopeeAffiliateClientTests
         using var httpClient = new HttpClient(new DelegateHandler(request =>
         {
             calls.Add(CapturedRequest.From(request));
-            return new HttpResponseMessage(HttpStatusCode.OK)
+            return ProductOfferResponse("""
             {
-                Content = JsonContent("""
-                {
-                  "data": {
-                    "productOfferV2": {
-                      "nodes": [
-                        {
-                          "itemId": 23798776965,
-                          "productName": "Cadeira de Escritorio Zinnia Venecia SL",
-                          "productLink": "https://shopee.com.br/product/627750190/23798776965",
-                          "offerLink": "https://s.shopee.com.br/offer-link",
-                          "imageUrl": "https://cf.shopee.com.br/file/image",
-                          "priceMin": "334.99",
-                          "priceMax": "334.99"
-                        }
-                      ],
-                      "pageInfo": {
-                        "page": 1,
-                        "limit": 1,
-                        "hasNextPage": false
-                      }
+              "data": {
+                "productOfferV2": {
+                  "nodes": [
+                    {
+                      "itemId": 23798776965,
+                      "productName": " Cadeira de Escritorio Zinnia   Venecia SL ",
+                      "productLink": "https://shopee.com.br/product/627750190/23798776965",
+                      "offerLink": "https://s.shopee.com.br/offer-link",
+                      "imageUrl": "https://cf.shopee.com.br/file/image",
+                      "priceMin": "334.99",
+                      "priceMax": "334.99",
+                      "priceDiscountRate": 20
                     }
+                  ],
+                  "pageInfo": {
+                    "page": 1,
+                    "limit": 1,
+                    "hasNextPage": false
                   }
                 }
-                """)
-            };
+              }
+            }
+            """);
         }));
-        var client = new ShopeeAffiliateClient(httpClient, () => 1704067200);
+        var client = new ShopeeAffiliateClient(httpClient, CreateOptions(), () => 1704067200);
 
-        var result = await client.GenerateAffiliateLinkAsync(
-            "https://shopee.com.br/Cadeira-i.627750190.23798776965",
-            CreateOptions(resolveShortUrls: false));
+        var result = await client.GenerateAffiliateLinkAsync(new ShopeeAffiliateLinkRequest
+        {
+            OriginUrl = new Uri("https://shopee.com.br/Cadeira-i.627750190.23798776965"),
+            ResolveShortUrls = false
+        });
 
-        result.AffiliateUrl.Should().Be("https://s.shopee.com.br/offer-link");
-        result.ProductTitle.Should().Be("Cadeira de Escritorio Zinnia Venecia SL");
-        result.ProductPrice.Should().Be("R$ 334,99");
-        result.ProductImageUrl.Should().Be("https://cf.shopee.com.br/file/image");
-        result.FinalProductUrl.Should().Be("https://shopee.com.br/product/627750190/23798776965");
+        result.Source.Should().Be(ShopeeAffiliateLinkSource.ProductOffer);
+        result.AffiliateUrl.Should().Be(new Uri("https://s.shopee.com.br/offer-link"));
+        result.ResolvedOriginUrl.Should().Be(new Uri("https://shopee.com.br/Cadeira-i.627750190.23798776965"));
+        result.Product.Should().NotBeNull();
+        result.Product!.ProductTitle.Should().Be("Cadeira de Escritorio Zinnia Venecia SL");
+        result.Product.ProductPrice.Should().Be("R$ 334,99");
+        result.Product.ProductOriginalPrice.Should().Be("R$ 418,74");
+        result.Product.ProductImageUrl.Should().Be(new Uri("https://cf.shopee.com.br/file/image"));
+        result.Product.ProductUrl.Should().Be(new Uri("https://shopee.com.br/product/627750190/23798776965"));
         calls.Should().ContainSingle();
         calls[0].Body.Should().Contain("productOfferV2");
         calls[0].Body.Should().NotContain("generateShortLink");
     }
 
     [Fact]
-    public void ReadSubIdsFromEnvironment_TrimsAndLimitsToFiveEntries()
+    public async Task GenerateAffiliateLinkAsync_FallsBackToShortLinkWhenPreferredProductOfferFails()
     {
-        ShopeeAffiliateClient.ReadSubIdsFromEnvironment(" telegram, ,bot,one,two,three,four ")
-            .Should().Equal("telegram", "bot", "one", "two", "three");
+        var calls = new List<CapturedRequest>();
+        using var httpClient = new HttpClient(new DelegateHandler(request =>
+        {
+            calls.Add(CapturedRequest.From(request));
+            return calls.Count == 1
+                ? GraphQlErrorResponse("Invalid product")
+                : ShortLinkResponse("https://s.shopee.com.br/fallback-link");
+        }));
+        var client = new ShopeeAffiliateClient(httpClient, CreateOptions(), () => 1704067200);
+
+        var result = await client.GenerateAffiliateLinkAsync(new ShopeeAffiliateLinkRequest
+        {
+            OriginUrl = new Uri("https://shopee.com.br/Cadeira-i.627750190.23798776965"),
+            ResolveShortUrls = false
+        });
+
+        result.Source.Should().Be(ShopeeAffiliateLinkSource.ShortLink);
+        result.AffiliateUrl.Should().Be(new Uri("https://s.shopee.com.br/fallback-link"));
+        calls.Should().HaveCount(2);
+        calls[0].Body.Should().Contain("productOfferV2");
+        calls[1].Body.Should().Contain("generateShortLink");
     }
 
     [Fact]
-    public void AddShopeeAffiliate_ConfiguresOptionsWithDelegate()
+    public async Task GenerateAffiliateLinkAsync_ProductOfferOnlyThrowsWhenOfferLookupFails()
+    {
+        using var httpClient = new HttpClient(new DelegateHandler(_ => GraphQlErrorResponse("Invalid product")));
+        var client = new ShopeeAffiliateClient(httpClient, CreateOptions(), () => 1704067200);
+
+        var act = () => client.GenerateAffiliateLinkAsync(new ShopeeAffiliateLinkRequest
+        {
+            OriginUrl = new Uri("https://shopee.com.br/Cadeira-i.627750190.23798776965"),
+            ResolveShortUrls = false,
+            Strategy = ShopeeAffiliateLinkStrategy.ProductOfferOnly
+        });
+
+        await act.Should().ThrowAsync<ShopeeAffiliateApiException>()
+            .WithMessage("*Invalid product*");
+    }
+
+    [Fact]
+    public async Task GenerateAffiliateLinkAsync_ShortLinkOnlySkipsProductOfferLookup()
+    {
+        var calls = new List<CapturedRequest>();
+        using var httpClient = new HttpClient(new DelegateHandler(request =>
+        {
+            calls.Add(CapturedRequest.From(request));
+            return ShortLinkResponse("https://s.shopee.com.br/short-only");
+        }));
+        var client = new ShopeeAffiliateClient(httpClient, CreateOptions(), () => 1704067200);
+
+        var result = await client.GenerateAffiliateLinkAsync(new ShopeeAffiliateLinkRequest
+        {
+            OriginUrl = new Uri("https://shopee.com.br/Cadeira-i.627750190.23798776965"),
+            ResolveShortUrls = false,
+            Strategy = ShopeeAffiliateLinkStrategy.ShortLinkOnly
+        });
+
+        result.Source.Should().Be(ShopeeAffiliateLinkSource.ShortLink);
+        result.AffiliateUrl.Should().Be(new Uri("https://s.shopee.com.br/short-only"));
+        calls.Should().ContainSingle();
+        calls[0].Body.Should().Contain("generateShortLink");
+        calls[0].Body.Should().NotContain("productOfferV2");
+    }
+
+    [Fact]
+    public async Task GetProductOfferAsync_ReturnsNormalizedProductOffer()
+    {
+        using var httpClient = new HttpClient(new DelegateHandler(_ => ProductOfferResponse("""
+        {
+          "data": {
+            "productOfferV2": {
+              "nodes": [
+                {
+                  "itemId": 23798776965,
+                  "productName": "Cadeira de Escritorio Zinnia Venecia SL",
+                  "productLink": "https://shopee.com.br/product/627750190/23798776965",
+                  "offerLink": "https://s.shopee.com.br/offer-link",
+                  "imageUrl": "https://cf.shopee.com.br/file/image",
+                  "priceMin": "334.99",
+                  "priceMax": "334.99"
+                }
+              ]
+            }
+          }
+        }
+        """)));
+        var client = new ShopeeAffiliateClient(httpClient, CreateOptions(priceCulture: CultureInfo.GetCultureInfo("en-US")));
+
+        var productOffer = await client.GetProductOfferAsync(new ShopeeProductOfferRequest
+        {
+            ProductIdentity = new("627750190", "23798776965")
+        });
+
+        productOffer.Should().NotBeNull();
+        productOffer!.AffiliateUrl.Should().Be(new Uri("https://s.shopee.com.br/offer-link"));
+        productOffer.ProductTitle.Should().Be("Cadeira de Escritorio Zinnia Venecia SL");
+        productOffer.ProductPrice.Should().Be("$334.99");
+        productOffer.ProductUrl.Should().Be(new Uri("https://shopee.com.br/product/627750190/23798776965"));
+        productOffer.ShopId.Should().Be("627750190");
+        productOffer.ItemId.Should().Be("23798776965");
+    }
+
+    [Fact]
+    public void AddShopeeAffiliate_ConfiguresClientAndOptionsWithDelegate()
     {
         var services = new ServiceCollection();
 
         services.AddShopeeAffiliate(options =>
         {
-            options.Endpoint = "https://example.test/graphql";
+            options.Endpoint = new Uri("https://example.test/graphql");
             options.AppId = "123";
             options.Secret = "secret";
             options.SubIds = new[] { "telegram", "bot" };
@@ -267,9 +248,8 @@ public sealed class ShopeeAffiliateClientTests
         using var provider = services.BuildServiceProvider();
         var options = provider.GetRequiredService<IOptions<ShopeeAffiliateOptions>>().Value;
 
-        provider.GetRequiredService<ShopeeAffiliateClient>().Should().NotBeNull();
-        provider.GetRequiredService<IShopeeAffiliateService>().Should().BeOfType<ShopeeAffiliateService>();
-        options.Endpoint.Should().Be("https://example.test/graphql");
+        provider.GetRequiredService<IShopeeAffiliateClient>().Should().BeOfType<ShopeeAffiliateClient>();
+        options.Endpoint.Should().Be(new Uri("https://example.test/graphql"));
         options.AppId.Should().Be("123");
         options.Secret.Should().Be("secret");
         options.SubIds.Should().Equal("telegram", "bot");
@@ -286,8 +266,8 @@ public sealed class ShopeeAffiliateClientTests
                 ["Shopee:Affiliate:Secret"] = "secret",
                 ["Shopee:Affiliate:SubIds:0"] = "telegram",
                 ["Shopee:Affiliate:SubIds:1"] = "bot",
-                ["Shopee:Affiliate:ResolveShortUrls"] = "false",
-                ["Shopee:Affiliate:PriceCultureName"] = "en-US"
+                ["Shopee:Affiliate:Timeout"] = "00:01:30",
+                ["Shopee:Affiliate:PriceCulture"] = "en-US"
             })
             .Build();
         var services = new ServiceCollection();
@@ -297,25 +277,57 @@ public sealed class ShopeeAffiliateClientTests
         using var provider = services.BuildServiceProvider();
         var options = provider.GetRequiredService<IOptions<ShopeeAffiliateOptions>>().Value;
 
-        options.Endpoint.Should().Be("https://example.test/graphql");
+        options.Endpoint.Should().Be(new Uri("https://example.test/graphql"));
         options.AppId.Should().Be("123");
         options.Secret.Should().Be("secret");
         options.SubIds.Should().Equal("telegram", "bot");
-        options.ResolveShortUrls.Should().BeFalse();
-        options.PriceCultureName.Should().Be("en-US");
+        options.Timeout.Should().Be(TimeSpan.FromSeconds(90));
+        options.PriceCulture.Name.Should().Be("en-US");
     }
 
-    private static ShopeeAffiliateOptions CreateOptions(bool resolveShortUrls = true)
+    private static ShopeeAffiliateOptions CreateOptions(CultureInfo? priceCulture = null)
     {
         return new ShopeeAffiliateOptions
         {
-            Endpoint = "https://example.test/graphql",
+            Endpoint = new Uri("https://example.test/graphql"),
             AppId = "123",
             Secret = "secret",
             SubIds = new[] { "telegram" },
-            ResolveShortUrls = resolveShortUrls
+            PriceCulture = priceCulture ?? CultureInfo.GetCultureInfo("pt-BR")
         };
     }
+
+    private static HttpResponseMessage ShortLinkResponse(string shortLink)
+        => new(HttpStatusCode.OK)
+        {
+            Content = JsonContent($$"""
+            {
+              "data": {
+                "generateShortLink": {
+                  "shortLink": "{{shortLink}}"
+                }
+              }
+            }
+            """)
+        };
+
+    private static HttpResponseMessage ProductOfferResponse(string json)
+        => new(HttpStatusCode.OK)
+        {
+            Content = JsonContent(json)
+        };
+
+    private static HttpResponseMessage GraphQlErrorResponse(string message)
+        => new(HttpStatusCode.OK)
+        {
+            Content = JsonContent($$"""
+            {
+              "errors": [
+                { "message": "{{message}}" }
+              ]
+            }
+            """)
+        };
 
     private static StringContent JsonContent(string json)
         => new(json, Encoding.UTF8, "application/json");

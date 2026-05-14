@@ -8,3 +8,6 @@ TestResults/
 coverage/
 *.nupkg
 *.snupkg
+artifacts/
+.DS_Store
+*.DotSettings.user

@@ -1,13 +1,41 @@
 # Shopee.Affiliate
 
-Cliente .NET 10 para a Shopee Affiliate Open API, focado em gerar links de afiliado e consultar ofertas de produto via GraphQL.
+A small .NET 10 client for the Shopee Affiliate Open API.
 
-## O que a API da Shopee entrega
+It focuses on the workflow most affiliate bots need:
 
-A Central de Ajuda oficial da Shopee descreve que a Affiliate API permite consultar listas de ofertas/produtos, gerar short links e consultar relatórios. A documentação pública brasileira disponível no portal de afiliados usa GraphQL no endpoint `https://open-api.affiliate.shopee.com.br/graphql`.
+- Convert Shopee URLs into affiliate short links.
+- Query product offers through `productOfferV2`.
+- Extract product title, current price, image URL, product URL, and offer link.
+- Calculate an approximate original price from `priceMin` and `priceDiscountRate`.
+- Parse Shopee product identifiers from common URL formats.
 
-Para produto, o endpoint `productOfferV2` retorna os dados que normalmente precisamos no bot:
+## Status
 
+This package is ready for an initial NuGet release, but the API itself requires Shopee Affiliate Open API credentials.
+
+The default endpoint targets Brazil:
+
+```text
+https://open-api.affiliate.shopee.com.br/graphql
+```
+
+You can override the endpoint through `ShopeeAffiliateOptions.Endpoint` for other Shopee affiliate regions.
+
+## API Notes
+
+Shopee's official Help Center says the Affiliate API can retrieve Shopee, brand, and product offer lists, generate short links, and retrieve conversion reports:
+
+https://help.shopee.sg/portal/10/article/191702-API-Access
+
+For Brazil, the affiliate Open API is exposed as GraphQL. Publicly available documentation and the existing bot integration use these operations:
+
+- `productOfferV2`
+- `generateShortLink`
+
+`productOfferV2` exposes the product fields this library maps:
+
+- `itemId`
 - `productName`
 - `productLink`
 - `offerLink`
@@ -15,24 +43,37 @@ Para produto, o endpoint `productOfferV2` retorna os dados que normalmente preci
 - `priceMin`
 - `priceMax`
 - `priceDiscountRate`
-- `itemId`
 - `shopId`
 
-Observação: a documentação pública não expõe um campo de "preço antigo" pronto. Esta lib calcula `ProductOriginalPrice` a partir de `priceMin` e `priceDiscountRate`, com a mesma regra usada no bot: `original = atual / (1 - desconto / 100)`.
+Important: the public affiliate schema does not expose a dedicated "old price" field. `ProductOriginalPrice` is calculated with:
 
-## Instalação local
+```text
+original = current / (1 - discountRate / 100)
+```
+
+This is useful for promotion messages, but it can differ slightly from Shopee's displayed price because `priceDiscountRate` is rounded.
+
+## Installation
+
+After the package is published:
 
 ```bash
 dotnet add package Shopee.Affiliate
 ```
 
-Enquanto o pacote não estiver publicado, gere o `.nupkg` localmente:
+To build a local package:
 
 ```bash
 dotnet pack -c Release
 ```
 
-## Uso
+The package will be generated at:
+
+```text
+src/Shopee.Affiliate/bin/Release/Shopee.Affiliate.<version>.nupkg
+```
+
+## Quick Start
 
 ```csharp
 using Shopee.Affiliate;
@@ -48,7 +89,7 @@ using var httpClient = new HttpClient();
 var client = new ShopeeAffiliateClient(httpClient);
 
 var result = await client.GenerateAffiliateLinkAsync(
-    "https://shopee.com.br/produto-i.627750190.23798776965",
+    "https://shopee.com.br/product/627750190/23798776965",
     options);
 
 Console.WriteLine(result.AffiliateUrl);
@@ -58,37 +99,97 @@ Console.WriteLine(result.ProductOriginalPrice);
 Console.WriteLine(result.ProductImageUrl);
 ```
 
-## Fluxo implementado
+## Main Types
 
-1. Resolve URL curta da Shopee, quando habilitado.
-2. Extrai `shopId` e `itemId` de URLs como `/product/{shopId}/{itemId}`, `/opaanlp/{shopId}/{itemId}`, `-i.{shopId}.{itemId}` e `?shopid=&itemid=`.
-3. Consulta `productOfferV2` para buscar metadados e `offerLink`.
-4. Se não encontrar oferta, usa `generateShortLink` como fallback.
-5. Retorna um modelo padronizado com link afiliado, título, preço, imagem e URL final.
+### `ShopeeAffiliateClient`
 
-## Autenticação
+The main API client. It provides:
 
-A assinatura segue o formato usado pela Shopee Affiliate Open API:
+- `GenerateAffiliateLinkAsync`
+- `GenerateShortLinkAsync`
+- `GetProductOfferAsync`
+- `ResolveShopeeUrlAsync`
+
+### `ShopeeAffiliateOptions`
+
+Configuration object with:
+
+- `Endpoint`
+- `AppId`
+- `Secret`
+- `SubIds`
+- `TimeoutMilliseconds`
+- `ResolveShortUrls`
+- `PreferProductOffer`
+- `FallbackToShortLink`
+- `PriceCultureName`
+
+### `ShopeeAffiliateLinkResult`
+
+Normalized result with:
+
+- `AffiliateUrl`
+- `ShortLink`
+- `ProductTitle`
+- `ProductPrice`
+- `ProductOriginalPrice`
+- `ProductImageUrl`
+- `ProductUrl`
+- `FinalProductUrl`
+- `ResolvedUrl`
+- `ProductOffer`
+
+## URL Formats
+
+The library can extract `shopId` and `itemId` from:
+
+```text
+https://shopee.com.br/product/{shopId}/{itemId}
+https://shopee.com.br/{slug}-i.{shopId}.{itemId}
+https://shopee.com.br/opaanlp/{shopId}/{itemId}
+https://shopee.com.br/...?...shopid={shopId}&itemid={itemId}
+```
+
+Short URLs can be resolved before querying `productOfferV2` when `ResolveShortUrls` is enabled.
+
+## Authentication
+
+Shopee Affiliate Open API requests are signed with SHA-256:
 
 ```text
 Authorization: SHA256 Credential={AppId}, Timestamp={Timestamp}, Signature={Signature}
 Signature = SHA256(AppId + Timestamp + Payload + Secret)
 ```
 
-O `Timestamp` é Unix time em segundos e o `Payload` é o JSON exato enviado no body.
+`Timestamp` is Unix time in seconds. `Payload` must be the exact JSON body sent to the GraphQL endpoint.
 
-## Publicação
+## Development
 
-1. Atualize `RepositoryUrl` em `src/Shopee.Affiliate/Shopee.Affiliate.csproj`.
-2. Atualize a versão do pacote.
-3. Rode:
+```bash
+dotnet restore
+dotnet test
+dotnet pack -c Release
+```
+
+## Publishing
+
+Before publishing to NuGet:
+
+1. Update `RepositoryUrl` in `src/Shopee.Affiliate/Shopee.Affiliate.csproj`.
+2. Update the package version.
+3. Create a release package:
 
 ```bash
 dotnet test
 dotnet pack -c Release
+```
+
+4. Push to NuGet:
+
+```bash
 dotnet nuget push src/Shopee.Affiliate/bin/Release/Shopee.Affiliate.*.nupkg --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json
 ```
 
-## Licença
+## License
 
 MIT

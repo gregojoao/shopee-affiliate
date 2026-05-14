@@ -1,5 +1,7 @@
 # Shopee.Affiliate
 
+> A lightweight, strongly typed .NET SDK for Shopee Affiliate Open Platform APIs.
+
 [![CI](https://github.com/gregojoao/shopee-affiliate/actions/workflows/ci.yml/badge.svg)](https://github.com/gregojoao/shopee-affiliate/actions/workflows/ci.yml)
 [![NuGet](https://img.shields.io/nuget/v/Shopee.Affiliate.svg)](https://www.nuget.org/packages/Shopee.Affiliate)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)

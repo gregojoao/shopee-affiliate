@@ -24,10 +24,17 @@ jobs:
 
       - name: Check NuGet API key
         shell: pwsh
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
-          if ([string]::IsNullOrWhiteSpace("${{ secrets.NUGET_API_KEY }}")) {
+          if ([string]::IsNullOrWhiteSpace($env:NUGET_API_KEY)) {
             throw "Repository secret NUGET_API_KEY is required."
           }
 
       - name: Publish package to NuGet
-        run: dotnet nuget push "artifacts\*.nupkg" --api-key "${{ secrets.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
+        shell: pwsh
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          $apiKey = $env:NUGET_API_KEY.Trim()
+          dotnet nuget push "artifacts\*.nupkg" --api-key $apiKey --source https://api.nuget.org/v3/index.json --skip-duplicate

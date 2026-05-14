@@ -1,7 +1,8 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Shopee.Affiliate.Application;
 
-namespace Shopee.Affiliate;
+namespace Shopee.Affiliate.Infrastructure;
 
 public static class ShopeeAffiliateServiceCollectionExtensions
 {
@@ -16,18 +17,7 @@ public static class ShopeeAffiliateServiceCollectionExtensions
 
         services.AddOptions<ShopeeAffiliateOptions>()
             .Configure(configureOptions)
-            .Validate(options =>
-            {
-                try
-                {
-                    options.Validate();
-                    return true;
-                }
-                catch
-                {
-                    return false;
-                }
-            }, "Shopee affiliate options are invalid.")
+            .Validate(AreOptionsValid, "Shopee affiliate options are invalid.")
             .ValidateOnStart();
 
         return services.AddShopeeAffiliateCore();
@@ -44,18 +34,7 @@ public static class ShopeeAffiliateServiceCollectionExtensions
         var section = configuration.GetSection(sectionName);
         services.AddOptions<ShopeeAffiliateOptions>()
             .Bind(section)
-            .Validate(options =>
-            {
-                try
-                {
-                    options.Validate();
-                    return true;
-                }
-                catch
-                {
-                    return false;
-                }
-            }, $"Configuration section '{sectionName}' contains invalid Shopee affiliate options.")
+            .Validate(AreOptionsValid, $"Configuration section '{sectionName}' contains invalid Shopee affiliate options.")
             .ValidateOnStart();
 
         return services.AddShopeeAffiliateCore();
@@ -63,8 +42,20 @@ public static class ShopeeAffiliateServiceCollectionExtensions
 
     private static IServiceCollection AddShopeeAffiliateCore(this IServiceCollection services)
     {
-        services.AddHttpClient<ShopeeAffiliateClient>();
-        services.AddTransient<IShopeeAffiliateService, ShopeeAffiliateService>();
+        services.AddHttpClient<IShopeeAffiliateClient, ShopeeAffiliateClient>();
         return services;
+    }
+
+    private static bool AreOptionsValid(ShopeeAffiliateOptions options)
+    {
+        try
+        {
+            options.Validate();
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 }

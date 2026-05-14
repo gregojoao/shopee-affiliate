@@ -1,11 +1,8 @@
-using System.Text.Json;
+namespace Shopee.Affiliate.Application;
 
-namespace Shopee.Affiliate;
-
-public sealed record ShopeeShortLinkResult(
-    string ShortLink,
-    string Payload,
-    JsonDocument ResponseBody) : IDisposable
+public sealed record ShopeeShortLinkResult
 {
-    public void Dispose() => ResponseBody.Dispose();
+    public required Uri ShortLink { get; init; }
+
+    public string? RawResponse { get; init; }
 }

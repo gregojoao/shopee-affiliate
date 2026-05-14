@@ -2,8 +2,15 @@ using System.Text.RegularExpressions;
 
 namespace Shopee.Affiliate.Domain;
 
-internal static class ShopeeAffiliateUrlParser
+internal static partial class ShopeeAffiliateUrlParser
 {
+    private static readonly Regex[] ProductPathPatterns =
+    [
+        ProductPathRegex(),
+        OpenApiPathRegex(),
+        LegacyProductPathRegex()
+    ];
+
     public static bool IsValidHttpUrl(string? value)
     {
         return Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
@@ -23,16 +30,27 @@ internal static class ShopeeAffiliateUrlParser
         }
 
         var decodedPath = Uri.UnescapeDataString(uri.AbsolutePath);
-        var pathPatterns = new[]
+        if (TryExtractFromPath(decodedPath, out productIdentity))
         {
-            @"/product/(?<shopId>\d+)/(?<itemId>\d+)(?:/|$)",
-            @"/opaanlp/(?<shopId>\d+)/(?<itemId>\d+)(?:/|$)",
-            @"(?:^|[-/])i\.(?<shopId>\d+)\.(?<itemId>\d+)$"
-        };
+            return true;
+        }
 
-        foreach (var pattern in pathPatterns)
+        return TryExtractFromQuery(uri.Query, out productIdentity);
+    }
+
+    public static string NormalizeNumericId(string? value)
+    {
+        var normalized = (value ?? string.Empty).Trim();
+        return NumericIdRegex().IsMatch(normalized) ? normalized : string.Empty;
+    }
+
+    private static bool TryExtractFromPath(
+        string decodedPath,
+        out ShopeeAffiliateProductIdentity productIdentity)
+    {
+        foreach (var pattern in ProductPathPatterns)
         {
-            var match = Regex.Match(decodedPath, pattern, RegexOptions.IgnoreCase);
+            var match = pattern.Match(decodedPath);
             if (match.Success)
             {
                 productIdentity = new ShopeeAffiliateProductIdentity(
@@ -42,29 +60,33 @@ internal static class ShopeeAffiliateUrlParser
             }
         }
 
-        var query = ParseQuery(uri.Query);
+        productIdentity = new ShopeeAffiliateProductIdentity(null, string.Empty);
+        return false;
+    }
+
+    private static bool TryExtractFromQuery(
+        string uriQuery,
+        out ShopeeAffiliateProductIdentity productIdentity)
+    {
+        var query = ParseQuery(uriQuery);
         var queryShopId = FirstNonEmpty(
             query.GetValueOrDefault("shopid"),
             query.GetValueOrDefault("shopId"));
         var queryItemId = FirstNonEmpty(
             query.GetValueOrDefault("itemid"),
             query.GetValueOrDefault("itemId"));
+        var itemId = NormalizeNumericId(queryItemId);
 
-        if (!string.IsNullOrWhiteSpace(NormalizeNumericId(queryItemId)))
+        if (!string.IsNullOrWhiteSpace(itemId))
         {
             productIdentity = new ShopeeAffiliateProductIdentity(
                 NormalizeNumericId(queryShopId),
-                NormalizeNumericId(queryItemId));
+                itemId);
             return true;
         }
 
+        productIdentity = new ShopeeAffiliateProductIdentity(null, string.Empty);
         return false;
-    }
-
-    public static string NormalizeNumericId(string? value)
-    {
-        var normalized = (value ?? string.Empty).Trim();
-        return Regex.IsMatch(normalized, @"^\d+$") ? normalized : string.Empty;
     }
 
     private static Dictionary<string, string> ParseQuery(string query)
@@ -83,4 +105,16 @@ internal static class ShopeeAffiliateUrlParser
 
     private static string FirstNonEmpty(params string?[] values)
         => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
+
+    [GeneratedRegex(@"/product/(?<shopId>\d+)/(?<itemId>\d+)(?:/|$)", RegexOptions.IgnoreCase)]
+    private static partial Regex ProductPathRegex();
+
+    [GeneratedRegex(@"/opaanlp/(?<shopId>\d+)/(?<itemId>\d+)(?:/|$)", RegexOptions.IgnoreCase)]
+    private static partial Regex OpenApiPathRegex();
+
+    [GeneratedRegex(@"(?:^|[-/])i\.(?<shopId>\d+)\.(?<itemId>\d+)$", RegexOptions.IgnoreCase)]
+    private static partial Regex LegacyProductPathRegex();
+
+    [GeneratedRegex(@"^\d+$")]
+    private static partial Regex NumericIdRegex();
 }

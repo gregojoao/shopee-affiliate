@@ -1,125 +1,156 @@
-using System.Text;
-using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Shopee.Affiliate.Domain;
 using Shopee.Affiliate.Infrastructure;
 
-namespace Shopee.Affiliate;
+namespace Shopee.Affiliate.Application;
 
-public sealed class ShopeeAffiliateClient
+public sealed class ShopeeAffiliateClient : IShopeeAffiliateClient
 {
     private readonly HttpClient _httpClient;
-    private readonly Func<long> _nowSeconds;
+    private readonly ShopeeAffiliateOptions _options;
+    private readonly IShopeeAffiliateGraphQlTransport _graphQlTransport;
 
-    public ShopeeAffiliateClient(HttpClient httpClient, Func<long>? nowSeconds = null)
+    [ActivatorUtilitiesConstructor]
+    public ShopeeAffiliateClient(HttpClient httpClient, IOptions<ShopeeAffiliateOptions> options)
+        : this(httpClient, options?.Value ?? throw new ArgumentNullException(nameof(options)))
+    {
+    }
+
+    public ShopeeAffiliateClient(
+        HttpClient httpClient,
+        ShopeeAffiliateOptions options,
+        Func<long>? nowSeconds = null)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
-        _nowSeconds = nowSeconds ?? (() => DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        _options = options ?? throw new ArgumentNullException(nameof(options));
+        var clock = nowSeconds ?? (() => DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        _graphQlTransport = new ShopeeAffiliateGraphQlTransport(_httpClient, clock);
     }
 
     public async Task<ShopeeAffiliateLinkResult> GenerateAffiliateLinkAsync(
-        string originUrl,
-        ShopeeAffiliateOptions options,
+        ShopeeAffiliateLinkRequest request,
         CancellationToken cancellationToken = default)
     {
-        options.Validate();
-        EnsureValidOriginUrl(originUrl);
+        ArgumentNullException.ThrowIfNull(request);
+        _options.Validate();
+        EnsureValidOriginUrl(request.OriginUrl);
 
-        using var timeoutCts = CreateTimeoutTokenSource(options, cancellationToken);
+        using var timeoutCts = CreateTimeoutTokenSource(cancellationToken);
         var token = timeoutCts.Token;
-        var resolvedUrl = options.ResolveShortUrls
-            ? await ResolveShopeeUrlAsync(originUrl, options, token)
-            : originUrl;
+        var resolvedUrl = await ResolveOriginUrlIfNeededAsync(request.OriginUrl, request.ResolveShortUrls, token);
 
-        ShopeeProductOffer? productOffer = null;
-        var productIdentity =
-            ShopeeAffiliateUrlParser.TryExtractProductIdentity(resolvedUrl, out var resolvedIdentity) ? resolvedIdentity :
-            ShopeeAffiliateUrlParser.TryExtractProductIdentity(originUrl, out var originIdentity) ? originIdentity :
-            null;
-
-        if (options.PreferProductOffer && productIdentity is not null)
+        if (request.Strategy is ShopeeAffiliateLinkStrategy.ShortLinkOnly)
         {
-            try
-            {
-                using var productOfferResult = await GetProductOfferAsync(productIdentity, options, token);
-                productOffer = productOfferResult.ProductOffer;
-
-                if (!string.IsNullOrWhiteSpace(productOffer?.AffiliateUrl))
-                {
-                    return CreateAffiliateResult(productOffer.AffiliateUrl, originUrl, resolvedUrl, productOffer);
-                }
-            }
-            catch when (options.FallbackToShortLink)
-            {
-                productOffer = null;
-            }
+            var shortLink = await GenerateShortLinkCoreAsync(request.OriginUrl, request.SubIds, token);
+            return CreateShortLinkResult(shortLink.ShortLink, resolvedUrl);
         }
 
-        if (!options.FallbackToShortLink)
+        var productOffer = await GetProductOfferForLinkStrategyAsync(request, resolvedUrl, token);
+        if (productOffer?.AffiliateUrl is not null)
+        {
+            return new ShopeeAffiliateLinkResult
+            {
+                AffiliateUrl = productOffer.AffiliateUrl,
+                Source = ShopeeAffiliateLinkSource.ProductOffer,
+                ResolvedOriginUrl = resolvedUrl,
+                Product = productOffer
+            };
+        }
+
+        if (request.Strategy is ShopeeAffiliateLinkStrategy.ProductOfferOnly)
         {
             throw new ShopeeAffiliateApiException("Shopee API did not return a product offer link.");
         }
 
-        using var shortLinkResult = await GenerateShortLinkAsync(originUrl, options, token);
-        return CreateAffiliateResult(shortLinkResult.ShortLink, originUrl, resolvedUrl, productOffer);
+        var fallbackShortLink = await GenerateShortLinkCoreAsync(request.OriginUrl, request.SubIds, token);
+        return CreateShortLinkResult(fallbackShortLink.ShortLink, resolvedUrl);
     }
 
     public async Task<ShopeeShortLinkResult> GenerateShortLinkAsync(
-        string originUrl,
-        ShopeeAffiliateOptions options,
+        ShopeeShortLinkRequest request,
         CancellationToken cancellationToken = default)
     {
-        options.Validate();
-        EnsureValidOriginUrl(originUrl);
+        ArgumentNullException.ThrowIfNull(request);
+        _options.Validate();
+        EnsureValidOriginUrl(request.OriginUrl);
 
-        using var timeoutCts = CreateTimeoutTokenSource(options, cancellationToken);
-        var payload = ShopeeAffiliateGraphQlPayloadFactory.BuildGenerateShortLinkPayload(originUrl, options.SubIds);
-        var responseBody = await PostGraphQLAsync(payload, options, timeoutCts.Token);
-        var shortLink = ShopeeAffiliateResponseMapper.ExtractShortLink(responseBody.RootElement);
-
-        return new ShopeeShortLinkResult(shortLink, payload, responseBody);
+        using var timeoutCts = CreateTimeoutTokenSource(cancellationToken);
+        return await GenerateShortLinkCoreAsync(request.OriginUrl, request.SubIds, timeoutCts.Token);
     }
 
-    public async Task<ShopeeProductOfferResult> GetProductOfferAsync(
+    public async Task<ShopeeProductOffer?> GetProductOfferAsync(
+        ShopeeProductOfferRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        _options.Validate();
+
+        using var timeoutCts = CreateTimeoutTokenSource(cancellationToken);
+        return await GetProductOfferCoreAsync(request.ProductIdentity, timeoutCts.Token);
+    }
+
+    public async Task<Uri> ResolveShopeeUrlAsync(
+        Uri originUrl,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureValidOriginUrl(originUrl);
+
+        using var timeoutCts = CreateTimeoutTokenSource(cancellationToken);
+        return await ResolveShopeeUrlCoreAsync(originUrl, timeoutCts.Token);
+    }
+
+    private async Task<ShopeeShortLinkResult> GenerateShortLinkCoreAsync(
+        Uri originUrl,
+        IReadOnlyList<string> requestSubIds,
+        CancellationToken cancellationToken)
+    {
+        var payload = ShopeeAffiliateGraphQlPayloadFactory.BuildGenerateShortLinkPayload(
+            originUrl.ToString(),
+            ResolveSubIds(requestSubIds));
+
+        using var response = await _graphQlTransport.PostAsync(payload, _options, cancellationToken);
+        var shortLink = ShopeeAffiliateResponseMapper.ExtractShortLink(response.Body.RootElement);
+
+        return new ShopeeShortLinkResult
+        {
+            ShortLink = shortLink,
+            RawResponse = response.RawBody
+        };
+    }
+
+    private async Task<ShopeeProductOffer?> GetProductOfferCoreAsync(
         ShopeeAffiliateProductIdentity productIdentity,
-        ShopeeAffiliateOptions options,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken)
     {
-        options.Validate();
-
-        using var timeoutCts = CreateTimeoutTokenSource(options, cancellationToken);
         var payload = ShopeeAffiliateGraphQlPayloadFactory.BuildProductOfferPayload(productIdentity);
-        var responseBody = await PostGraphQLAsync(payload, options, timeoutCts.Token);
-        var productOffer = ShopeeAffiliateResponseMapper.ExtractProductOffer(responseBody.RootElement, options.PriceCultureName);
 
-        return new ShopeeProductOfferResult(productOffer, payload, responseBody);
+        using var response = await _graphQlTransport.PostAsync(payload, _options, cancellationToken);
+        return ShopeeAffiliateResponseMapper.ExtractProductOffer(response.Body.RootElement, _options.PriceCulture);
     }
 
-    public async Task<string> ResolveShopeeUrlAsync(
-        string originUrl,
-        ShopeeAffiliateOptions options,
-        CancellationToken cancellationToken = default)
+    private async Task<Uri> ResolveShopeeUrlCoreAsync(
+        Uri originUrl,
+        CancellationToken cancellationToken)
     {
-        EnsureValidOriginUrl(originUrl);
-
-        using var timeoutCts = CreateTimeoutTokenSource(options, cancellationToken);
         using var request = new HttpRequestMessage(HttpMethod.Get, originUrl);
-        request.Headers.UserAgent.ParseAdd("Shopee.Affiliate/0.2");
+        request.Headers.UserAgent.ParseAdd(ShopeeAffiliateDefaults.UserAgent);
 
         try
         {
             using var response = await _httpClient.SendAsync(
                 request,
                 HttpCompletionOption.ResponseHeadersRead,
-                timeoutCts.Token);
+                cancellationToken);
 
-            return response.RequestMessage?.RequestUri?.ToString() is { Length: > 0 } finalUrl &&
-                   ShopeeAffiliateUrlParser.IsValidHttpUrl(finalUrl)
+            return response.RequestMessage?.RequestUri is { } finalUrl &&
+                   ShopeeAffiliateUrlParser.IsValidHttpUrl(finalUrl.ToString())
                 ? finalUrl
                 : originUrl;
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new ShopeeAffiliateApiException($"Shopee URL resolve timed out after {options.TimeoutMilliseconds}ms.");
+            throw new ShopeeAffiliateApiException($"Shopee URL resolve timed out after {_options.Timeout.TotalMilliseconds:0}ms.");
         }
         catch
         {
@@ -127,126 +158,74 @@ public sealed class ShopeeAffiliateClient
         }
     }
 
-    public static string BuildGenerateShortLinkPayload(string originUrl, IEnumerable<string>? subIds = null)
-        => ShopeeAffiliateGraphQlPayloadFactory.BuildGenerateShortLinkPayload(originUrl, subIds);
-
-    public static string BuildProductOfferPayload(ShopeeAffiliateProductIdentity productIdentity)
-        => ShopeeAffiliateGraphQlPayloadFactory.BuildProductOfferPayload(productIdentity);
-
-    public static string BuildAuthorizationHeader(string appId, long timestamp, string payload, string secret)
-        => ShopeeAffiliateAuthenticator.BuildAuthorizationHeader(appId, timestamp, payload, secret);
-
-    public static string CreateSignature(string appId, long timestamp, string payload, string secret)
-        => ShopeeAffiliateAuthenticator.CreateSignature(appId, timestamp, payload, secret);
-
-    public static string ExtractShortLink(JsonElement responseBody)
-        => ShopeeAffiliateResponseMapper.ExtractShortLink(responseBody);
-
-    public static ShopeeProductOffer? ExtractProductOffer(JsonElement responseBody, string priceCultureName = "pt-BR")
-        => ShopeeAffiliateResponseMapper.ExtractProductOffer(responseBody, priceCultureName);
-
-    public static bool TryExtractProductIdentity(string value, out ShopeeAffiliateProductIdentity productIdentity)
-        => ShopeeAffiliateUrlParser.TryExtractProductIdentity(value, out productIdentity);
-
-    public static IReadOnlyList<string> ReadSubIdsFromEnvironment(string? value)
-        => ShopeeAffiliateGraphQlPayloadFactory.ReadSubIdsFromEnvironment(value);
-
-    public static string FormatShopeePriceRange(string? priceMin, string? priceMax, string priceCultureName = "pt-BR")
-        => ShopeePriceFormatter.FormatShopeePriceRange(priceMin, priceMax, priceCultureName);
-
-    public static string ComputeShopeeOriginalPrice(
-        string? priceMin,
-        string? priceMax,
-        string? priceDiscountRate,
-        string priceCultureName = "pt-BR")
-        => ShopeePriceFormatter.ComputeShopeeOriginalPrice(priceMin, priceMax, priceDiscountRate, priceCultureName);
-
-    private async Task<JsonDocument> PostGraphQLAsync(
-        string payload,
-        ShopeeAffiliateOptions options,
+    private async Task<Uri> ResolveOriginUrlIfNeededAsync(
+        Uri originUrl,
+        bool shouldResolveShortUrls,
         CancellationToken cancellationToken)
     {
-        var timestamp = _nowSeconds();
-        using var request = new HttpRequestMessage(HttpMethod.Post, options.Endpoint);
-        request.Headers.TryAddWithoutValidation(
-            "Authorization",
-            ShopeeAffiliateAuthenticator.BuildAuthorizationHeader(options.AppId, timestamp, payload, options.Secret));
-        request.Headers.UserAgent.ParseAdd("Shopee.Affiliate/0.2");
-        request.Content = new StringContent(payload, Encoding.UTF8, "application/json");
+        return shouldResolveShortUrls
+            ? await ResolveShopeeUrlCoreAsync(originUrl, cancellationToken)
+            : originUrl;
+    }
+
+    private async Task<ShopeeProductOffer?> GetProductOfferForLinkStrategyAsync(
+        ShopeeAffiliateLinkRequest request,
+        Uri resolvedUrl,
+        CancellationToken cancellationToken)
+    {
+        var productIdentity = TryFindProductIdentity(resolvedUrl, request.OriginUrl);
+        if (productIdentity is null)
+        {
+            return null;
+        }
 
         try
         {
-            using var response = await _httpClient.SendAsync(request, cancellationToken);
-            var text = await response.Content.ReadAsStringAsync(cancellationToken);
-
-            JsonDocument responseBody;
-            try
-            {
-                responseBody = string.IsNullOrWhiteSpace(text)
-                    ? JsonDocument.Parse("{}")
-                    : JsonDocument.Parse(text);
-            }
-            catch (JsonException ex)
-            {
-                throw new ShopeeAffiliateApiException(
-                    $"Shopee API returned non-JSON response: {Truncate(text, 500)}",
-                    ex);
-            }
-
-            if (!response.IsSuccessStatusCode)
-            {
-                using (responseBody)
-                {
-                    throw new ShopeeAffiliateApiException(
-                        $"Shopee API HTTP {(int)response.StatusCode}: {Truncate(text, 1000)}");
-                }
-            }
-
-            return responseBody;
+            return await GetProductOfferCoreAsync(productIdentity, cancellationToken);
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch when (request.Strategy is ShopeeAffiliateLinkStrategy.PreferProductOffer)
         {
-            throw new ShopeeAffiliateApiException($"Shopee API request timed out after {options.TimeoutMilliseconds}ms.");
+            return null;
         }
     }
 
-    private static void EnsureValidOriginUrl(string originUrl)
+    private IReadOnlyList<string> ResolveSubIds(IReadOnlyList<string> requestSubIds)
+        => requestSubIds.Count > 0 ? requestSubIds : _options.SubIds;
+
+    private static ShopeeAffiliateProductIdentity? TryFindProductIdentity(
+        Uri resolvedUrl,
+        Uri originUrl)
     {
-        if (!ShopeeAffiliateUrlParser.IsValidHttpUrl(originUrl))
+        return ShopeeAffiliateUrlParser.TryExtractProductIdentity(resolvedUrl.ToString(), out var resolvedIdentity) ? resolvedIdentity :
+            ShopeeAffiliateUrlParser.TryExtractProductIdentity(originUrl.ToString(), out var originIdentity) ? originIdentity :
+            null;
+    }
+
+    private static void EnsureValidOriginUrl(Uri originUrl)
+    {
+        if (originUrl is null ||
+            (originUrl.Scheme != Uri.UriSchemeHttp && originUrl.Scheme != Uri.UriSchemeHttps))
         {
             throw new ArgumentException("A valid Shopee origin URL is required.", nameof(originUrl));
         }
     }
 
-    private static CancellationTokenSource CreateTimeoutTokenSource(
-        ShopeeAffiliateOptions options,
-        CancellationToken cancellationToken)
+    private CancellationTokenSource CreateTimeoutTokenSource(CancellationToken cancellationToken)
     {
         var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutCts.CancelAfter(TimeSpan.FromMilliseconds(Math.Max(options.TimeoutMilliseconds, 1)));
+        timeoutCts.CancelAfter(_options.Timeout);
         return timeoutCts;
     }
 
-    private static ShopeeAffiliateLinkResult CreateAffiliateResult(
-        string affiliateUrl,
-        string originUrl,
-        string resolvedUrl,
-        ShopeeProductOffer? productOffer)
+    private static ShopeeAffiliateLinkResult CreateShortLinkResult(
+        Uri shortLink,
+        Uri resolvedUrl)
     {
-        return new ShopeeAffiliateLinkResult(
-            AffiliateUrl: affiliateUrl,
-            ShortLink: affiliateUrl,
-            ProductTitle: productOffer?.ProductTitle ?? string.Empty,
-            ProductPrice: productOffer?.ProductPrice ?? string.Empty,
-            ProductOriginalPrice: productOffer?.ProductOriginalPrice ?? string.Empty,
-            ProductImageUrl: productOffer?.ProductImageUrl ?? productOffer?.ImageUrl ?? string.Empty,
-            ProductUrl: productOffer?.ProductUrl ?? resolvedUrl ?? originUrl,
-            FinalProductUrl: productOffer?.ProductUrl ?? resolvedUrl ?? originUrl,
-            Platform: "Shopee",
-            ResolvedUrl: resolvedUrl ?? string.Empty,
-            ProductOffer: productOffer);
+        return new ShopeeAffiliateLinkResult
+        {
+            AffiliateUrl = shortLink,
+            Source = ShopeeAffiliateLinkSource.ShortLink,
+            ResolvedOriginUrl = resolvedUrl
+        };
     }
-
-    private static string Truncate(string value, int maxLength)
-        => value.Length <= maxLength ? value : value[..maxLength];
 }

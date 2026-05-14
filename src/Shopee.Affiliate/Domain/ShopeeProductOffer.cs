@@ -1,13 +1,13 @@
-namespace Shopee.Affiliate;
+namespace Shopee.Affiliate.Domain;
 
 public sealed record ShopeeProductOffer(
-    string AffiliateUrl,
+    Uri? AffiliateUrl,
     string ProductTitle,
     string ProductPrice,
     string ProductOriginalPrice,
-    string ProductImageUrl,
-    string ProductUrl,
-    string ImageUrl,
+    Uri? ProductImageUrl,
+    Uri? ProductUrl,
+    Uri? ImageUrl,
     string ItemId,
     string? ShopId,
     string PriceMin,

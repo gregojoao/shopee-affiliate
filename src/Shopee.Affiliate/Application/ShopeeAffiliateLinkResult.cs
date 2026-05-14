@@ -1,14 +1,14 @@
-namespace Shopee.Affiliate;
+using Shopee.Affiliate.Domain;
 
-public sealed record ShopeeAffiliateLinkResult(
-    string AffiliateUrl,
-    string ShortLink,
-    string ProductTitle,
-    string ProductPrice,
-    string ProductOriginalPrice,
-    string ProductImageUrl,
-    string ProductUrl,
-    string FinalProductUrl,
-    string Platform,
-    string ResolvedUrl,
-    ShopeeProductOffer? ProductOffer);
+namespace Shopee.Affiliate.Application;
+
+public sealed record ShopeeAffiliateLinkResult
+{
+    public required Uri AffiliateUrl { get; init; }
+
+    public required ShopeeAffiliateLinkSource Source { get; init; }
+
+    public Uri? ResolvedOriginUrl { get; init; }
+
+    public ShopeeProductOffer? Product { get; init; }
+}

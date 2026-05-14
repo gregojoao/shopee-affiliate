@@ -1,20 +1,22 @@
-namespace Shopee.Affiliate;
+using Shopee.Affiliate.Domain;
 
-public interface IShopeeAffiliateService
+namespace Shopee.Affiliate.Application;
+
+public interface IShopeeAffiliateClient
 {
     Task<ShopeeAffiliateLinkResult> GenerateAffiliateLinkAsync(
-        string originUrl,
+        ShopeeAffiliateLinkRequest request,
         CancellationToken cancellationToken = default);
 
     Task<ShopeeShortLinkResult> GenerateShortLinkAsync(
-        string originUrl,
+        ShopeeShortLinkRequest request,
         CancellationToken cancellationToken = default);
 
-    Task<ShopeeProductOfferResult> GetProductOfferAsync(
-        ShopeeAffiliateProductIdentity productIdentity,
+    Task<ShopeeProductOffer?> GetProductOfferAsync(
+        ShopeeProductOfferRequest request,
         CancellationToken cancellationToken = default);
 
-    Task<string> ResolveShopeeUrlAsync(
-        string originUrl,
+    Task<Uri> ResolveShopeeUrlAsync(
+        Uri originUrl,
         CancellationToken cancellationToken = default);
 }

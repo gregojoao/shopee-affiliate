@@ -49,7 +49,7 @@ src/Shopee.Affiliate/bin/Release/Shopee.Affiliate.<version>.nupkg
 ## Quick Start
 
 ```csharp
-using Shopee.Affiliate;
+using Shopee.Affiliate.Application;
 
 var options = new ShopeeAffiliateOptions
 {
@@ -59,17 +59,19 @@ var options = new ShopeeAffiliateOptions
 };
 
 using var httpClient = new HttpClient();
-var client = new ShopeeAffiliateClient(httpClient);
+var client = new ShopeeAffiliateClient(httpClient, options);
 
-var result = await client.GenerateAffiliateLinkAsync(
-    "https://shopee.com.br/product/627750190/23798776965",
-    options);
+var result = await client.GenerateAffiliateLinkAsync(new ShopeeAffiliateLinkRequest
+{
+    OriginUrl = new Uri("https://shopee.com.br/product/627750190/23798776965")
+});
 
 Console.WriteLine(result.AffiliateUrl);
-Console.WriteLine(result.ProductTitle);
-Console.WriteLine(result.ProductPrice);
-Console.WriteLine(result.ProductOriginalPrice);
-Console.WriteLine(result.ProductImageUrl);
+Console.WriteLine(result.Source);
+Console.WriteLine(result.Product?.ProductTitle);
+Console.WriteLine(result.Product?.ProductPrice);
+Console.WriteLine(result.Product?.ProductOriginalPrice);
+Console.WriteLine(result.Product?.ProductImageUrl);
 ```
 
 ## Configuration
@@ -77,22 +79,25 @@ Console.WriteLine(result.ProductImageUrl);
 You can pass credentials manually:
 
 ```csharp
+using System.Globalization;
+using Shopee.Affiliate.Application;
+
 var options = new ShopeeAffiliateOptions
 {
     AppId = "your-app-id",
     Secret = "your-secret",
     Endpoint = ShopeeAffiliateOptions.DefaultEndpoint,
     SubIds = new[] { "campaign", "channel" },
-    ResolveShortUrls = true,
-    PreferProductOffer = true,
-    FallbackToShortLink = true,
-    PriceCultureName = "pt-BR"
+    Timeout = TimeSpan.FromSeconds(90),
+    PriceCulture = CultureInfo.GetCultureInfo("pt-BR")
 };
 ```
 
 For ASP.NET Core, Worker Services, or any app using `Microsoft.Extensions.DependencyInjection`, register the SDK once:
 
 ```csharp
+using Shopee.Affiliate.Infrastructure;
+
 builder.Services.AddShopeeAffiliate(builder.Configuration);
 ```
 
@@ -104,7 +109,9 @@ Then configure secrets through environment variables, user secrets, Key Vault, o
     "Affiliate": {
       "AppId": "your-app-id",
       "Secret": "your-secret",
-      "SubIds": [ "campaign", "channel" ]
+      "SubIds": [ "campaign", "channel" ],
+      "Timeout": "00:01:30",
+      "PriceCulture": "pt-BR"
     }
   }
 }
@@ -112,14 +119,20 @@ Then configure secrets through environment variables, user secrets, Key Vault, o
 
 In production, prefer environment variables or a secret manager instead of committing secrets to `appsettings.json`.
 
-After registration, inject the service:
+After registration, inject the client:
 
 ```csharp
-public sealed class DealPublisher(IShopeeAffiliateService shopee)
+using Shopee.Affiliate.Application;
+
+public sealed class DealPublisher(IShopeeAffiliateClient shopee)
 {
     public async Task PublishAsync(string productUrl)
     {
-        var result = await shopee.GenerateAffiliateLinkAsync(productUrl);
+        var result = await shopee.GenerateAffiliateLinkAsync(new ShopeeAffiliateLinkRequest
+        {
+            OriginUrl = new Uri(productUrl)
+        });
+
         Console.WriteLine(result.AffiliateUrl);
     }
 }
@@ -128,6 +141,8 @@ public sealed class DealPublisher(IShopeeAffiliateService shopee)
 You can also configure options directly in code:
 
 ```csharp
+using Shopee.Affiliate.Infrastructure;
+
 builder.Services.AddShopeeAffiliate(options =>
 {
     options.AppId = builder.Configuration["SHOPEE_AFFILIATE_APP_ID"]!;
@@ -141,31 +156,52 @@ builder.Services.AddShopeeAffiliate(options =>
 | `Endpoint` | `https://open-api.affiliate.shopee.com.br/graphql` | Shopee Affiliate Open API endpoint for Brazil. |
 | `AppId` | Empty | Shopee Affiliate API app ID. |
 | `Secret` | Empty | Shopee Affiliate API secret used for request signing. |
-| `SubIds` | Empty | Optional tracking IDs sent to Shopee. |
-| `TimeoutMilliseconds` | `90000` | Request timeout. |
-| `ResolveShortUrls` | `true` | Resolves short URLs before product offer lookup. |
-| `PreferProductOffer` | `true` | Tries `productOfferV2` before falling back to short link generation. |
-| `FallbackToShortLink` | `true` | Uses `generateShortLink` when product offer lookup fails or returns no offer link. |
-| `PriceCultureName` | `pt-BR` | Culture used to format currency strings. |
+| `SubIds` | Empty | Default tracking IDs sent to Shopee when a request does not provide its own `SubIds`. |
+| `Timeout` | `00:01:30` | Request timeout. |
+| `PriceCulture` | `pt-BR` | Culture used to format currency strings. |
+
+Per-call behavior lives on request objects:
+
+| Request Property | Default | Purpose |
+|---|---:|---|
+| `ShopeeAffiliateLinkRequest.ResolveShortUrls` | `true` | Resolves short URLs before product offer lookup. |
+| `ShopeeAffiliateLinkRequest.Strategy` | `PreferProductOffer` | Chooses product offer, short link, or product-offer-only behavior. |
+| `SubIds` | Empty | Optional tracking IDs for this call. When empty, the client uses `ShopeeAffiliateOptions.SubIds`. |
 
 ## Main APIs
 
-Use `IShopeeAffiliateService` when credentials are registered through DI. Use `ShopeeAffiliateClient` directly when you want to pass `ShopeeAffiliateOptions` per call.
+Use `IShopeeAffiliateClient` when credentials are registered through DI. Use `ShopeeAffiliateClient` directly when you want to provide `ShopeeAffiliateOptions` in code.
 
 ### `GenerateAffiliateLinkAsync`
 
 High-level helper for the usual bot workflow. It tries to extract product identifiers, query the affiliate product offer, and return the best affiliate URL available.
 
 ```csharp
-ShopeeAffiliateLinkResult result = await client.GenerateAffiliateLinkAsync(url, options);
+ShopeeAffiliateLinkResult result = await client.GenerateAffiliateLinkAsync(new ShopeeAffiliateLinkRequest
+{
+    OriginUrl = new Uri(url),
+    Strategy = ShopeeAffiliateLinkStrategy.PreferProductOffer
+});
 ```
+
+Available strategies:
+
+| Strategy | Behavior |
+|---|---|
+| `PreferProductOffer` | Tries `productOfferV2`; falls back to `generateShortLink` if the product offer lookup fails or returns no offer link. |
+| `ShortLinkOnly` | Calls `generateShortLink` directly. |
+| `ProductOfferOnly` | Requires a valid product offer link and throws `ShopeeAffiliateApiException` when it is unavailable. |
 
 ### `GenerateShortLinkAsync`
 
 Calls `generateShortLink` directly.
 
 ```csharp
-using ShopeeShortLinkResult result = await client.GenerateShortLinkAsync(url, options);
+ShopeeShortLinkResult result = await client.GenerateShortLinkAsync(new ShopeeShortLinkRequest
+{
+    OriginUrl = new Uri(url)
+});
+
 Console.WriteLine(result.ShortLink);
 ```
 
@@ -174,12 +210,18 @@ Console.WriteLine(result.ShortLink);
 Calls `productOfferV2` directly for a known product identity.
 
 ```csharp
+using Shopee.Affiliate.Domain;
+
 var identity = new ShopeeAffiliateProductIdentity(
     ShopId: "627750190",
     ItemId: "23798776965");
 
-using ShopeeProductOfferResult result = await client.GetProductOfferAsync(identity, options);
-Console.WriteLine(result.ProductOffer?.ProductTitle);
+ShopeeProductOffer? offer = await client.GetProductOfferAsync(new ShopeeProductOfferRequest
+{
+    ProductIdentity = identity
+});
+
+Console.WriteLine(offer?.ProductTitle);
 ```
 
 ### `ResolveShopeeUrlAsync`
@@ -187,7 +229,7 @@ Console.WriteLine(result.ProductOffer?.ProductTitle);
 Follows redirects for Shopee short URLs and returns the final URL when possible.
 
 ```csharp
-string resolvedUrl = await client.ResolveShopeeUrlAsync(shortUrl, options);
+Uri resolvedUrl = await client.ResolveShopeeUrlAsync(new Uri(shortUrl));
 ```
 
 ## Architecture
@@ -197,10 +239,10 @@ The SDK is organized with a small DDD-inspired structure:
 | Layer | Responsibility |
 |---|---|
 | `Domain` | Product identity parsing, price formatting, and affiliate offer value objects. |
-| `Application` | Public use cases and service abstractions such as `ShopeeAffiliateClient` and `IShopeeAffiliateService`. |
-| `Infrastructure` | GraphQL payloads, Shopee authentication, response mapping, HTTP integration, and DI registration. |
+| `Application` | Public use cases and service abstractions such as `ShopeeAffiliateClient`, `IShopeeAffiliateClient`, requests, options, and results. |
+| `Infrastructure` | GraphQL payloads, Shopee authentication, response mapping, HTTP integration, exceptions, and DI registration. |
 
-The public namespace remains `Shopee.Affiliate`, so existing consumers do not need to change their `using` statements.
+Public namespaces follow the physical project structure: use `Shopee.Affiliate.Application` for clients/options/results, `Shopee.Affiliate.Domain` for value objects, and `Shopee.Affiliate.Infrastructure` for DI registration and infrastructure exceptions.
 
 ## Returned Data
 
@@ -209,15 +251,21 @@ The public namespace remains `Shopee.Affiliate`, so existing consumers do not ne
 | Property | Description |
 |---|---|
 | `AffiliateUrl` | Best affiliate URL returned by the SDK. |
-| `ShortLink` | Same URL used for compatibility with short-link workflows. |
-| `ProductTitle` | Product title when offer lookup succeeds. |
+| `Source` | Indicates whether the affiliate URL came from `ProductOffer` or `ShortLink`. |
+| `ResolvedOriginUrl` | URL after redirect resolution, when resolution was requested. |
+| `Product` | Normalized product offer data, when product offer lookup succeeds. |
+
+`ShopeeProductOffer` contains:
+
+| Property | Description |
+|---|---|
+| `AffiliateUrl` | Product offer affiliate URL. |
+| `ProductTitle` | Product title. |
 | `ProductPrice` | Formatted current price or price range. |
 | `ProductOriginalPrice` | Estimated original price when discount data is available. |
 | `ProductImageUrl` | Product image URL. |
 | `ProductUrl` | Canonical product URL from Shopee. |
-| `FinalProductUrl` | Final resolved product URL. |
-| `ResolvedUrl` | URL after redirect resolution. |
-| `ProductOffer` | Raw normalized offer data, when available. |
+| `ItemId` / `ShopId` | Shopee product identifiers. |
 
 ## Supported URL Formats
 
@@ -230,7 +278,7 @@ https://shopee.com.br/opaanlp/{shopId}/{itemId}
 https://shopee.com.br/...?...shopid={shopId}&itemid={itemId}
 ```
 
-When `ResolveShortUrls` is enabled, short URLs are resolved before product identity extraction.
+When `ShopeeAffiliateLinkRequest.ResolveShortUrls` is enabled, short URLs are resolved before product identity extraction.
 
 ## Authentication
 

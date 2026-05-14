@@ -190,6 +190,18 @@ Follows redirects for Shopee short URLs and returns the final URL when possible.
 string resolvedUrl = await client.ResolveShopeeUrlAsync(shortUrl, options);
 ```
 
+## Architecture
+
+The SDK is organized with a small DDD-inspired structure:
+
+| Layer | Responsibility |
+|---|---|
+| `Domain` | Product identity parsing, price formatting, and affiliate offer value objects. |
+| `Application` | Public use cases and service abstractions such as `ShopeeAffiliateClient` and `IShopeeAffiliateService`. |
+| `Infrastructure` | GraphQL payloads, Shopee authentication, response mapping, HTTP integration, and DI registration. |
+
+The public namespace remains `Shopee.Affiliate`, so existing consumers do not need to change their `using` statements.
+
 ## Returned Data
 
 `ShopeeAffiliateLinkResult` contains:

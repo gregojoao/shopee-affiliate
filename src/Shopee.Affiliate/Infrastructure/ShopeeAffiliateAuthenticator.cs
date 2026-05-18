@@ -1,5 +1,4 @@
-using System.Security.Cryptography;
-using System.Text;
+using Shopee.Affiliate.Signing;
 
 namespace Shopee.Affiliate.Infrastructure;
 
@@ -10,18 +9,12 @@ internal static class ShopeeAffiliateAuthenticator
         long timestamp,
         string payload,
         string secret)
-    {
-        var signature = CreateSignature(appId, timestamp, payload, secret);
-        return $"SHA256 Credential={appId}, Timestamp={timestamp}, Signature={signature}";
-    }
+        => ShopeeSignatureBuilder.BuildAuthorizationHeader(appId, timestamp, payload, secret);
 
     public static string CreateSignature(
         string appId,
         long timestamp,
         string payload,
         string secret)
-    {
-        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes($"{appId}{timestamp}{payload}{secret}"));
-        return Convert.ToHexString(bytes).ToLowerInvariant();
-    }
+        => ShopeeSignatureBuilder.CreateSignature(appId, timestamp, payload, secret);
 }

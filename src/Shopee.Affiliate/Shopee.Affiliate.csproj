@@ -5,18 +5,18 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PackageId>Shopee.Affiliate</PackageId>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
     <Authors>Greco Labs</Authors>
     <Company>Greco Labs</Company>
     <Copyright>Copyright (c) 2026 Greco Labs</Copyright>
-    <Description>Minimal .NET client for Shopee Affiliate Open API link generation and product offer lookup.</Description>
+    <Description>Minimal .NET client for the Shopee Affiliate Open API: affiliate link generation, product offer lookup, and affiliate reporting (conversions, sales summary, click stats, link usage).</Description>
     <PackageProjectUrl>https://github.com/gregojoao/shopee-affiliate</PackageProjectUrl>
-    <PackageTags>shopee;affiliate;graphql;links;ecommerce;nuget</PackageTags>
+    <PackageTags>shopee;affiliate;graphql;links;ecommerce;reports;dashboard;nuget</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
     <RepositoryType>git</RepositoryType>
     <RepositoryUrl>https://github.com/gregojoao/shopee-affiliate</RepositoryUrl>
-    <PackageReleaseNotes>Release 1.0.0 with stable SDK contracts based on request objects, typed Uri results, link strategies, and application/domain/infrastructure namespaces.</PackageReleaseNotes>
+    <PackageReleaseNotes>1.1.0 adds the Shopee.Affiliate.Reports surface (ShopeeAffiliateReportsClient, conversions/sales-summary/click-stats/link-usage queries) and a typed exception hierarchy rooted at ShopeeAffiliateException. Link-generation contracts are unchanged.</PackageReleaseNotes>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>

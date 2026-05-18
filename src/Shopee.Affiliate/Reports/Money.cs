@@ -1,12 +1,14 @@
 namespace Shopee.Affiliate.Reports;
 
 /// <summary>
-/// Currency-aware monetary value. The SDK never converts between currencies —
-/// the <see cref="Currency"/> code returned by Shopee is preserved verbatim.
+/// Currency-aware monetary value. The SDK never converts between currencies.
 /// </summary>
 /// <remarks>
-/// Shopee Brazil always returns <c>BRL</c>. Other Shopee regions return the
-/// local ISO 4217 code (e.g. <c>IDR</c>, <c>SGD</c>, <c>VND</c>).
+/// The Shopee Affiliate Open API does not return an explicit currency code on
+/// <c>conversionReport</c> rows; the SDK defaults <see cref="Currency"/> to
+/// the regional code of the configured endpoint (<c>BRL</c> for
+/// <c>open-api.affiliate.shopee.com.br</c>). When other Shopee regions add a
+/// currency field, the mapper will preserve it verbatim.
 /// </remarks>
 public readonly record struct Money(decimal Amount, string Currency = "BRL")
 {

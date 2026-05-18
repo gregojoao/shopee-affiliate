@@ -23,7 +23,11 @@ namespace Shopee.Affiliate.Reports;
 /// <param name="ClickTime">Click that originated the conversion.</param>
 /// <param name="PurchaseTime">Order purchase time.</param>
 /// <param name="CompleteTime">Order completion time (when Shopee finalizes payout).</param>
-/// <param name="Currency">ISO 4217 code preserved from the Shopee response.</param>
+/// <param name="Currency">
+/// ISO 4217 code. The Shopee <c>conversionReport</c> schema does not currently
+/// return a currency field, so the SDK defaults this to <c>BRL</c> for the
+/// Brazil endpoint. Preserved verbatim once Shopee adds the field.
+/// </param>
 /// <param name="RawJson">Original GraphQL <c>node</c> JSON for debugging/integration.</param>
 public record ShopeeConversion(
     string ConversionId,

@@ -319,6 +319,10 @@ All reporting exceptions derive from `Shopee.Affiliate.Infrastructure.ShopeeAffi
 
 - **Time zone.** Shopee operates in `GMT+7`. The SDK accepts `DateTimeOffset` so the
   caller's offset is preserved; the wire format is Unix-seconds.
+- **Maximum window.** `conversionReport` accepts at most ~90 days between `From`
+  and `To`. Wider windows are rejected by Shopee with error code `11001`
+  (`"Params Error : can only query data for the last 3 months"`), surfaced as
+  `ShopeeAffiliateApiException`. Split larger ranges into chunks of ≤ 90 days.
 - **Page size.** Capped at `500` (Shopee server limit).
 - **Cursor TTL.** `scrollId` values expire ~30 seconds after issue; resume on
   fresh windows or restart from page 1 if the cursor is rejected.

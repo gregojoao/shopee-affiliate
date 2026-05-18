@@ -60,6 +60,10 @@ project follows [Semantic Versioning](https://semver.org/) and the
   parses them with `InvariantCulture`.
 - `completeTime` lives on each `orders[].items[]` row, not on the conversion
   root.
+- `conversionReport` enforces a maximum window of ~90 days between
+  `purchaseTimeStart` and `purchaseTimeEnd`. Wider windows are rejected with
+  error code `11001` (`"Params Error : can only query data for the last 3
+  months"`) and surface as `ShopeeAffiliateApiException`.
 
 ## [1.0.0] - 2026-04-23
 

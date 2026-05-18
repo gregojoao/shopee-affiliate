@@ -29,6 +29,11 @@ namespace Shopee.Affiliate.Reports;
 /// converting to Unix-seconds, so callers can pass any TZ and the absolute
 /// instant is preserved on the wire.
 /// </para>
+/// <para>
+/// Shopee rejects <c>conversionReport</c> windows wider than ~90 days with
+/// error code <c>11001</c>; the client propagates that as
+/// <see cref="ShopeeAffiliateApiException"/> without retry.
+/// </para>
 /// </remarks>
 public sealed class ShopeeAffiliateReportsClient : IShopeeAffiliateReportsClient
 {

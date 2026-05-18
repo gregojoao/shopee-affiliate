@@ -9,7 +9,14 @@ namespace Shopee.Affiliate.Reports;
 /// wall-clock for display, but the wire format is an absolute epoch so the
 /// caller's offset is preserved as-is.
 /// </param>
-/// <param name="To">Upper bound (inclusive) of <c>purchaseTime</c>.</param>
+/// <param name="To">
+/// Upper bound (inclusive) of <c>purchaseTime</c>. Shopee enforces a maximum
+/// window of ~90 days between <see cref="From"/> and <see cref="To"/>; wider
+/// ranges are rejected with error code <c>11001</c>
+/// (<c>"Params Error : can only query data for the last 3 months"</c>),
+/// surfaced as <see cref="Shopee.Affiliate.Infrastructure.ShopeeAffiliateApiException"/>.
+/// Split larger ranges into chunks client-side.
+/// </param>
 /// <param name="Status">Optional order-status filter. <c>All</c> when omitted.</param>
 /// <param name="SubId">
 /// Optional Sub Id to scope the report. <c>conversionReport</c> does not

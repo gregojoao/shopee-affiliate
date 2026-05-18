@@ -16,6 +16,13 @@ namespace Shopee.Affiliate.Reports;
 /// <c>ToUnixTimeSeconds()</c> and the wall-clock semantics observed by the
 /// affiliate dashboard are preserved.
 /// </para>
+/// <para>
+/// Shopee enforces a maximum window of ~90 days for <c>conversionReport</c>;
+/// wider ranges fail with error code <c>11001</c> and propagate as
+/// <see cref="Shopee.Affiliate.Infrastructure.ShopeeAffiliateApiException"/>.
+/// Callers that need longer history should split the request into ≤ 90-day
+/// chunks.
+/// </para>
 /// </remarks>
 public interface IShopeeAffiliateReportsClient
 {

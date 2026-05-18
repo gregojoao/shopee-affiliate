@@ -11,3 +11,4 @@ coverage/
 artifacts/
 .DS_Store
 *.DotSettings.user
+.claude/

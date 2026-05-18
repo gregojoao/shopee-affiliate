@@ -23,6 +23,7 @@ Maintained by **Greco Labs**.
 | Original price estimate | Calculates an approximate original price from `priceMin` and `priceDiscountRate`. |
 | URL parsing | Extracts `shopId` and `itemId` from common Shopee URL formats. |
 | Short URL resolving | Follows Shopee short URLs before trying product offer lookup. |
+| Affiliate reports | Lists conversions, aggregates a sales summary, and exposes click/link-usage metrics through `conversionReport` (see [Affiliate reports](#affiliate-reports)). |
 
 ## Installation
 
@@ -233,6 +234,105 @@ Follows redirects for Shopee short URLs and returns the final URL when possible.
 ```csharp
 Uri resolvedUrl = await client.ResolveShopeeUrlAsync(new Uri(shortUrl));
 ```
+
+## Affiliate reports
+
+`Shopee.Affiliate.Reports.ShopeeAffiliateReportsClient` exposes the reporting
+surface of the Shopee Affiliate Open API. It signs every call with the same
+SHA256 scheme as the link client, posts to the GraphQL endpoint, and returns
+strongly-typed DTOs.
+
+Register it the same way you register the link client:
+
+```csharp
+using Shopee.Affiliate.Infrastructure;
+
+builder.Services.AddShopeeAffiliateReports(builder.Configuration);
+// or:
+builder.Services.AddShopeeAffiliateReports(options =>
+{
+    options.AppId = builder.Configuration["SHOPEE_AFFILIATE_APP_ID"]!;
+    options.Secret = builder.Configuration["SHOPEE_AFFILIATE_SECRET"]!;
+});
+```
+
+Configuration section (defaults `Shopee:Affiliate:Reports`):
+
+```json
+{
+  "Shopee": {
+    "Affiliate": {
+      "Reports": {
+        "AppId": "your-app-id",
+        "Secret": "your-secret",
+        "Endpoint": "https://open-api.affiliate.shopee.com.br/graphql",
+        "Timeout": "00:00:30"
+      }
+    }
+  }
+}
+```
+
+Then inject `IShopeeAffiliateReportsClient`:
+
+```csharp
+using Shopee.Affiliate.Reports;
+
+public sealed class DashboardService(IShopeeAffiliateReportsClient reports)
+{
+    public async Task<ShopeeSalesSummary> LoadSummaryAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
+    {
+        var conversions = await reports.ListConversionsAsync(new ListShopeeConversionsRequest(
+            From: from,
+            To: to,
+            Status: ShopeeConversionStatusFilter.All,
+            PageSize: 200), ct);
+
+        return await reports.GetSalesSummaryAsync(new ShopeeSalesSummaryRequest(from, to), ct);
+    }
+}
+```
+
+### Methods
+
+| Method | GraphQL query | Notes |
+|---|---|---|
+| `ListConversionsAsync` | `conversionReport` | Cursor pagination via `scrollId` (expires ~30s). `Page` is honoured as a convenience by scrolling forward internally. |
+| `GetConversionAsync` | `conversionReport(orderId: ...)` | Throws `ShopeeAffiliateNotFoundException` if no row is returned. |
+| `GetSalesSummaryAsync` | `conversionReport` (full window) | Client-side aggregation over every page; `Clicks` and `ConversionRate` are always `null`. |
+| `GetClickStatsAsync` | _none_ | Always returns `Supported=false` — Shopee does not expose a click endpoint. |
+| `GetGeneratedLinkUsageAsync` | _none_ | Always returns `Supported=false` — Shopee does not expose link-generation counters. |
+
+### Exceptions
+
+All reporting exceptions derive from `Shopee.Affiliate.Infrastructure.ShopeeAffiliateException`:
+
+| Exception | Trigger |
+|---|---|
+| `ShopeeAffiliateAuthException` | Shopee error codes `10020`, `10031`, `10032`, `10033`, `10034`, `10035` or HTTP 401/403. |
+| `ShopeeAffiliateRateLimitException` | Shopee error code `10030` or HTTP 429. |
+| `ShopeeAffiliateNotFoundException` | Empty `conversionReport` result for a point lookup. |
+| `ShopeeAffiliateApiException` | Any other GraphQL error (`Code`, `Path`, `RequestId` populated). |
+| `ShopeeAffiliateUnsupportedException` | Reserved for future opt-in hard failures on `Supported=false` paths. |
+
+### Limits and conventions
+
+- **Time zone.** Shopee operates in `GMT+7`. The SDK accepts `DateTimeOffset` so the
+  caller's offset is preserved; the wire format is Unix-seconds.
+- **Maximum window.** `conversionReport` accepts at most ~90 days between `From`
+  and `To`. Wider windows are rejected by Shopee with error code `11001`
+  (`"Params Error : can only query data for the last 3 months"`), surfaced as
+  `ShopeeAffiliateApiException`. Split larger ranges into chunks of ≤ 90 days.
+- **Page size.** Capped at `500` (Shopee server limit).
+- **Cursor TTL.** `scrollId` values expire ~30 seconds after issue; resume on
+  fresh windows or restart from page 1 if the cursor is rejected.
+- **Retries.** A single automatic retry on HTTP 5xx and request timeouts.
+  HTTP 4xx surfaces immediately.
+- **Currency.** `Money.Currency` is preserved verbatim from Shopee — no
+  conversion happens inside the SDK.
+
+The GraphQL surface used by 1.1.0 is documented at
+<https://www.affiliateshopee.com.br/documentacao>.
 
 ## Architecture
 
